@@ -1,0 +1,33 @@
+{
+  "name": "braindump",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "NODE_OPTIONS=\"--no-deprecation\" next dev",
+    "build": "NODE_OPTIONS=\"--no-deprecation\" next build",
+    "start": "NODE_OPTIONS=\"--no-deprecation\" next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.76.1",
+    "konva": "^10.0.8",
+    "next": "14.2.33",
+    "openai": "^6.7.0",
+    "pg": "^8.16.3",
+    "react": "^18",
+    "react-dom": "^18",
+    "react-konva": "^19.2.0",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/pg": "^8.15.6",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.33",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
+  }
+}
