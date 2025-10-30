@@ -27,6 +27,7 @@ storybook-static/
 
 # ----- Taskmaster -----
 # Keep tasks tracked, but ignore state and generated reports/research
+.taskmaster
 .taskmaster/state.json
 .taskmaster/reports/
 .taskmaster/docs/research/
