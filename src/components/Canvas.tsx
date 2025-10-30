@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useMemo } from 'react'
 import { Stage, Layer } from 'react-konva'
 import Konva from 'konva'
 import { useStore } from '@/store'
@@ -24,12 +24,36 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
   const setPanning = useStore(state => state.setPanning)
   const isGridVisible = useStore(state => state.isGridVisible)
   const enableAnimations = useStore(state => state.enableAnimations)
-  const getVisibleIdeas = useStore(state => state.getVisibleIdeas)
-  const addIdea = useStore(state => state.addIdea)
-  const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
+  // Get ideas from store 
+  const ideas = useStore(state => state.ideas)
+  const allIdeas = useMemo(() => Object.values(ideas), [ideas])
   
-  // Get only visible ideas for performance (viewport culling)
-  const visibleIdeas = getVisibleIdeas(viewport, { width, height })
+  // Calculate visible ideas with useMemo to prevent infinite loops
+  const visibleIdeas = useMemo(() => {
+    const buffer = 500 // Render ideas 500px outside viewport for smooth scrolling
+    const { x, y, zoom } = viewport
+    
+    // Convert screen viewport to world coordinates
+    // In Konva, negative stage position means we've moved right/down in world space
+    const worldLeft = (-x - buffer) / zoom
+    const worldTop = (-y - buffer) / zoom
+    const worldRight = (-x + width + buffer) / zoom
+    const worldBottom = (-y + height + buffer) / zoom
+
+    return allIdeas.filter(idea => {
+      const ideaRight = idea.position_x + (idea.width || 200)
+      const ideaBottom = idea.position_y + (idea.height || 100)
+
+      const isVisible = !(
+        idea.position_x > worldRight ||
+        ideaRight < worldLeft ||
+        idea.position_y > worldBottom ||
+        ideaBottom < worldTop
+      )
+
+      return isVisible
+    })
+  }, [allIdeas, viewport, width, height])
 
   // Debounced viewport save function
   const debouncedSaveViewport = useCallback(() => {
@@ -42,41 +66,28 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
     const stage = stageRef.current
     if (!stage) return
 
-    stage.position({ x: viewport.x, y: viewport.y })
-    stage.scale({ x: viewport.zoom, y: viewport.zoom })
+    // Only update if there's a meaningful difference
+    const currentPos = stage.position()
+    const currentScale = stage.scaleX()
+    
+    const positionChanged = Math.abs(currentPos.x - viewport.x) > 0.1 || Math.abs(currentPos.y - viewport.y) > 0.1
+    const scaleChanged = Math.abs(currentScale - viewport.zoom) > 0.001
+    
+    if (positionChanged) {
+      stage.position({ x: viewport.x, y: viewport.y })
+    }
+    if (scaleChanged) {
+      stage.scale({ x: viewport.zoom, y: viewport.zoom })
+    }
   }, [viewport])
 
-  // Handle click to create ideas (for testing drag functionality)
-  const handleStageClick = useCallback(async (e: Konva.KonvaEventObject<MouseEvent>) => {
-    // Don't create ideas if we're panning, ctrl is pressed, or clicking on an existing idea
-    const isCtrlPressed = e.evt.ctrlKey || e.evt.metaKey
-    if (isPanning || isCtrlPressed || e.target !== e.target.getStage()) return
+  // Handle click on empty space to clear selections
+  const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    // Only handle clicks on empty space (not on ideas or other elements)
+    if (e.target !== e.target.getStage()) return
     
-    const stage = e.target.getStage()
-    if (!stage || !currentBrainDumpId) return
-    
-    const pointer = stage.getPointerPosition()
-    if (!pointer) return
-    
-    // Convert screen coordinates to world coordinates
-    const scale = stage.scaleX()
-    const worldX = (pointer.x - stage.x()) / scale
-    const worldY = (pointer.y - stage.y()) / scale
-    
-    console.log('🖱️ Creating idea:', {
-      pointer: { x: pointer.x, y: pointer.y },
-      stage: { x: stage.x(), y: stage.y(), scale },
-      world: { x: worldX, y: worldY },
-      viewport
-    })
-    
-    try {
-      await addIdea(`Test idea at (${Math.round(worldX)}, ${Math.round(worldY)})`, { x: worldX, y: worldY })
-      console.log('✅ Idea created successfully')
-    } catch (error) {
-      console.error('❌ Failed to create test idea:', error)
-    }
-  }, [isPanning, currentBrainDumpId, addIdea])
+    // Future: Add logic to clear selections when clicking on empty space
+  }, [])
 
   // Handle pan functionality (Ctrl + drag)
   const handleMouseDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -193,11 +204,64 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
     }
   }, [updateViewport, debouncedSaveViewport, enableAnimations])
 
+  // Get additional store actions for keyboard shortcuts
+  const toggleTheme = useStore(state => state.toggleTheme)
+  const toggleGrid = useStore(state => state.toggleGrid)
+  const toggleSidebar = useStore(state => state.toggleSidebar)
+  const createBrainDump = useStore(state => state.createBrainDump)
+  const getCurrentBrainDump = useStore(state => state.getCurrentBrainDump)
+
   // Keyboard shortcuts handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if typing in an input field
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+
+
+      // Ctrl+Shift+T or Cmd+Shift+T to toggle theme
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 't') {
+        e.preventDefault()
+        toggleTheme()
+        console.log('🎨 Theme toggled via keyboard shortcut')
+        return
+      }
+
+      // Ctrl+G or Cmd+G to toggle grid
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
+        e.preventDefault()
+        toggleGrid()
+        console.log('📊 Grid toggled via keyboard shortcut')
+        return
+      }
+
+      // Ctrl+/ or Cmd+/ to toggle sidebar
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault()
+        toggleSidebar()
+        console.log('🗂️ Sidebar toggled via keyboard shortcut')
+        return
+      }
+
+      // Ctrl+N or Cmd+N to create new brain dump
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        const newName = `Brain Dump ${new Date().toLocaleDateString()}`
+        createBrainDump(newName)
+        console.log('🧠 New brain dump created via keyboard shortcut')
+        return
+      }
+
+      // Ctrl+D or Cmd+D to duplicate current brain dump
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+        e.preventDefault()
+        const currentBrainDump = getCurrentBrainDump()
+        if (currentBrainDump) {
+          const duplicateName = `${currentBrainDump.name} (Copy)`
+          createBrainDump(duplicateName)
+          console.log('📋 Brain dump duplicated via keyboard shortcut')
+        }
         return
       }
 
@@ -245,7 +309,7 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [updateViewport, debouncedSaveViewport, enableAnimations])
+  }, [updateViewport, debouncedSaveViewport, enableAnimations, toggleTheme, toggleGrid, toggleSidebar, createBrainDump, getCurrentBrainDump])
 
   // Update cursor based on panning state
   useEffect(() => {
@@ -258,12 +322,6 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
 
   // Force layer redraw when ideas change
   useEffect(() => {
-    console.log('🎨 Ideas changed, forcing redraw:', {
-      visibleCount: visibleIdeas.length,
-      visibleIdeas: visibleIdeas.map(i => ({ id: i.id, x: i.position_x, y: i.position_y })),
-      viewport
-    })
-    
     const stage = stageRef.current
     if (!stage) return
 
@@ -271,9 +329,8 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
     const layers = stage.getLayers()
     if (layers.length > 1) {
       layers[1].batchDraw() // Main content layer (index 1)
-      console.log('🎨 Layer redraw completed')
     }
-  }, [visibleIdeas.length, visibleIdeas, viewport])
+  }, [visibleIdeas.length])
 
   return (
     <div className="canvas-container w-full h-full overflow-hidden">
@@ -298,11 +355,16 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
           />
         </Layer>
         <Layer>
-          {/* Main content layer - ideas and edges will be rendered here */}
+          {/* Main content layer - ideas will be rendered here */}
           {/* Viewport culling: Only rendering {visibleIdeas.length} visible ideas */}
-          {visibleIdeas.map((idea) => (
-            <Idea key={idea.id} idea={idea} />
-          ))}
+          {visibleIdeas.map((idea) => {
+            return (
+              <Idea 
+                key={idea.id} 
+                idea={idea} 
+              />
+            )
+          })}
         </Layer>
       </Stage>
     </div>

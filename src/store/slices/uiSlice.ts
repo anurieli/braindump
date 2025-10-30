@@ -57,8 +57,8 @@ export const createUiSlice: StateCreator<
   [],
   UiSlice
 > = (set) => ({
-  // Initial state
-  theme: 'light',
+  // Initial state - detect system preference
+  theme: typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   isGridVisible: true,
   activeModal: null,
   isSidebarOpen: true,

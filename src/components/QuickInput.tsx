@@ -38,7 +38,6 @@ export function QuickInput() {
 
       // TODO: Handle attachments upload
       if (attachments.length > 0) {
-        console.log('Attachments to upload:', attachments)
         // Will implement attachment upload in next iteration
       }
 

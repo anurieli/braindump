@@ -1,37 +1,25 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
-import { Group, Rect, Text, Circle } from 'react-konva'
+import { Group, Rect, Text } from 'react-konva'
 import { Idea as IdeaType } from '@/types'
 import { useStore } from '@/store'
 
 interface IdeaProps {
   idea: IdeaType
-  onStartConnection?: (ideaId: string, position: { x: number, y: number }) => void
-  onEndConnection?: (targetId: string) => void
-  isDragTarget?: boolean
-  hasChildren?: boolean
 }
 
 interface ViewState {
   isHovered: boolean
   isSelected: boolean
-  isDraggingConnection: boolean
-  isDropTarget: boolean
 }
 
 export default function Idea({ 
-  idea,
-  onStartConnection,
-  onEndConnection,
-  isDragTarget = false,
-  hasChildren = false
+  idea
 }: IdeaProps) {
   const [viewState, setViewState] = useState<ViewState>({
     isHovered: false,
-    isSelected: false,
-    isDraggingConnection: false,
-    isDropTarget: false
+    isSelected: false
   })
   const groupRef = useRef<any>(null)
 
@@ -108,16 +96,6 @@ export default function Idea({
         break
     }
 
-    // Drop target highlight
-    if (viewState.isDropTarget || isDragTarget) {
-      fillColor = '#dbeafe' // Light blue for drop target
-      strokeColor = '#60a5fa'
-    }
-
-    // Parent indicator (gold stroke)
-    if (hasChildren) {
-      strokeColor = '#f59e0b' // Gold for parent nodes
-    }
 
     // Selection override
     if (isSelected) {
@@ -125,12 +103,12 @@ export default function Idea({
     }
 
     // Hover state
-    if (viewState.isHovered && !viewState.isDropTarget) {
+    if (viewState.isHovered) {
       fillColor = '#f9fafb' // Slightly darker on hover
     }
 
     return { fillColor, strokeColor, textColor }
-  }, [idea.state, isSelected, viewState.isHovered, viewState.isDropTarget, isDragTarget, hasChildren])
+  }, [idea.state, isSelected, viewState.isHovered])
 
   // Event handlers
   const handleMouseEnter = useCallback(() => {
@@ -145,13 +123,16 @@ export default function Idea({
     selectIdea(idea.id)
   }, [selectIdea, idea.id])
 
-  const handleDragEnd = useCallback((e: { target: { x: () => number, y: () => number } }) => {
+  const handleDragEnd = useCallback((e: any) => {
     const newPosition = {
       x: e.target.x(),
       y: e.target.y()
     }
+    
+    // Update position
     updateIdeaPosition(idea.id, newPosition)
   }, [updateIdeaPosition, idea.id])
+
 
   const dimensions = getDimensions()
   const colors = getColors()
@@ -159,6 +140,7 @@ export default function Idea({
 
   return (
     <Group
+      ref={groupRef}
       x={idea.position_x || 0}
       y={idea.position_y || 0}
       draggable={true}
@@ -166,6 +148,7 @@ export default function Idea({
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}
       onDragEnd={handleDragEnd}
+      ideaId={idea.id} // Custom attribute for finding during drop
     >
       {/* Main background rectangle */}
       <Rect
@@ -219,6 +202,7 @@ export default function Idea({
           cornerRadius={4}
         />
       )}
+
     </Group>
   )
 }

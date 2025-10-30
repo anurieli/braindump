@@ -301,18 +301,18 @@ export const createIdeasSlice: StateCreator<
       return isVisible
     })
 
-    console.log('🔍 Viewport culling:', {
-      viewport: { x, y, zoom },
-      canvasSize,
-      worldBounds: { worldLeft, worldTop, worldRight, worldBottom },
-      totalIdeas: allIdeas.length,
-      visibleIdeas: visibleIdeas.length,
-      ideas: allIdeas.map(i => ({
-        id: i.id,
-        pos: { x: i.position_x, y: i.position_y },
-        visible: visibleIdeas.includes(i)
-      }))
-    })
+    // console.log('🔍 Viewport culling:', {
+    //   viewport: { x, y, zoom },
+    //   canvasSize,
+    //   worldBounds: { worldLeft, worldTop, worldRight, worldBottom },
+    //   totalIdeas: allIdeas.length,
+    //   visibleIdeas: visibleIdeas.length,
+    //   ideas: allIdeas.map(i => ({
+    //     id: i.id,
+    //     pos: { x: i.position_x, y: i.position_y },
+    //     visible: visibleIdeas.includes(i)
+    //   }))
+    // })
 
     return visibleIdeas
   },

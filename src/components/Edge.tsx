@@ -8,6 +8,7 @@ interface EdgeProps {
   endPos: { x: number; y: number }
   onDelete?: (edgeId: string) => void
   onDoubleClick?: (edge: EdgeType) => void
+  onClick?: (edgeId: string) => void
   isSelected?: boolean
 }
 
@@ -17,6 +18,7 @@ export default function Edge({
   endPos,
   onDelete,
   onDoubleClick,
+  onClick,
   isSelected = false
 }: EdgeProps) {
   const [isHovered, setIsHovered] = React.useState(false)
@@ -44,6 +46,9 @@ export default function Edge({
     // If shift/cmd is held, delete the edge
     if ((e.evt.shiftKey || e.evt.metaKey) && onDelete) {
       onDelete(edge.id)
+    } else if (onClick) {
+      // Normal click - select the edge
+      onClick(edge.id)
     }
   }
 

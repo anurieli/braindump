@@ -63,4 +63,4 @@ export interface Viewport {
 }
 
 export type Theme = 'light' | 'dark'
-export type Modal = 'settings' | 'idea-details' | 'edge-creation' | null
+export type Modal = 'settings' | 'idea-details' | 'edge-creation' | 'keyboard-shortcuts' | null

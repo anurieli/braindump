@@ -126,6 +126,7 @@ export const useStoreActions = () => {
     
     // Edges
     loadEdges: store.loadEdges,
+    loadEdgeTypes: store.loadEdgeTypes,
     addEdge: store.addEdge,
     updateEdge: store.updateEdge,
     deleteEdge: store.deleteEdge,

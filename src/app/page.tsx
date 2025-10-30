@@ -5,6 +5,10 @@ import dynamic from 'next/dynamic'
 import { useStore } from '@/store'
 import CanvasHeader from '@/components/CanvasHeader'
 import { QuickInput } from '@/components/QuickInput'
+import ThemeProvider from '@/components/ThemeProvider'
+import SidePanel from '@/components/SidePanel'
+import KeyboardShortcutsModal from '@/components/KeyboardShortcutsModal'
+import SettingsModal from '@/components/SettingsModal'
 
 // Dynamically import Canvas to avoid SSR issues with Konva
 const Canvas = dynamic(() => import('@/components/Canvas'), {
@@ -28,11 +32,14 @@ export default function Home() {
   const loadBrainDumps = useStore(state => state.loadBrainDumps)
   const createBrainDump = useStore(state => state.createBrainDump)
   const loadIdeas = useStore(state => state.loadIdeas)
+  const isSidebarOpen = useStore(state => state.isSidebarOpen)
 
   useEffect(() => {
     const updateDimensions = () => {
+      // Adjust canvas width based on sidebar state
+      const sidebarWidth = isSidebarOpen ? 256 : 64 // 256px expanded, 64px collapsed
       setDimensions({
-        width: window.innerWidth,
+        width: window.innerWidth - sidebarWidth,
         height: window.innerHeight
       })
     }
@@ -40,7 +47,7 @@ export default function Home() {
     updateDimensions()
     window.addEventListener('resize', updateDimensions)
     return () => window.removeEventListener('resize', updateDimensions)
-  }, [])
+  }, [isSidebarOpen])
 
   // Initialize app with brain dump
   useEffect(() => {
@@ -67,7 +74,7 @@ export default function Home() {
     }
     
     initializeApp()
-  }, []) // Remove dependencies to run only once on mount
+  }, [loadBrainDumps, createBrainDump]) // Include dependencies for ESLint compliance
 
   // Load ideas when brain dump changes
   useEffect(() => {
@@ -89,14 +96,27 @@ export default function Home() {
   }
 
   return (
-    <div className="w-full h-screen overflow-hidden bg-white dark:bg-gray-900 relative">
-      <Canvas width={dimensions.width} height={dimensions.height} />
-      
-      {/* Canvas Header with brain dump name and idea count */}
-      <CanvasHeader />
-      
-      {/* Quick Input for creating ideas */}
-      <QuickInput />
-    </div>
+    <ThemeProvider>
+      <div className="w-full h-screen overflow-hidden bg-white dark:bg-gray-900 flex">
+        {/* Side Panel for Brain Dump Management */}
+        <SidePanel />
+        
+        {/* Main Content Area */}
+        <div className="flex-1 h-full relative overflow-hidden">
+          {/* Main Canvas Area */}
+          <Canvas width={dimensions.width} height={dimensions.height} />
+          
+          {/* Canvas Header with brain dump name and idea count */}
+          <CanvasHeader />
+          
+          {/* Quick Input for creating ideas */}
+          <QuickInput />
+        </div>
+        
+        {/* Modals */}
+        <KeyboardShortcutsModal />
+        <SettingsModal />
+      </div>
+    </ThemeProvider>
   )
 }
