@@ -106,6 +106,11 @@ export const canUndo = () => undoRedoManager.canUndo()
 export const canRedo = () => undoRedoManager.canRedo()
 export const clearHistory = () => undoRedoManager.clear()
 
+// Selector hook for checking if a specific idea is selected
+export const useIsIdeaSelected = (id: string): boolean => {
+  return useStore(state => state.selectedIdeaIds.has(id))
+}
+
 // Export store actions for easier access
 export const useStoreActions = () => {
   const store = useStore()

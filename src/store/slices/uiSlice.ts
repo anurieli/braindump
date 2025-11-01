@@ -20,6 +20,7 @@ export interface UiSlice {
     endX: number
     endY: number
   } | null
+  selectedIdeaIds: Set<string>
 
   // Performance settings
   enableAnimations: boolean
@@ -42,6 +43,12 @@ export interface UiSlice {
   setPanning: (panning: boolean) => void
   setSelecting: (selecting: boolean) => void
   setSelectionBox: (box: UiSlice['selectionBox']) => void
+  
+  // Selection management actions
+  setSelection: (ids: string[]) => void
+  addToSelection: (ids: string[]) => void
+  removeFromSelection: (ids: string[]) => void
+  clearSelection: () => void
   
   // Keyboard shortcuts
   setShortcutPressed: (key: string, pressed: boolean) => void
@@ -70,6 +77,7 @@ export const createUiSlice: StateCreator<
   isPanning: false,
   isSelecting: false,
   selectionBox: null,
+  selectedIdeaIds: new Set<string>(),
 
   // Performance settings
   enableAnimations: true,
@@ -139,6 +147,31 @@ export const createUiSlice: StateCreator<
 
   setSelectionBox: (box: UiSlice['selectionBox']) => {
     set({ selectionBox: box })
+  },
+
+  // Selection management actions
+  setSelection: (ids: string[]) => {
+    set({ selectedIdeaIds: new Set(ids) })
+  },
+
+  addToSelection: (ids: string[]) => {
+    set(state => {
+      const newSelection = new Set(state.selectedIdeaIds)
+      ids.forEach(id => newSelection.add(id))
+      return { selectedIdeaIds: newSelection }
+    })
+  },
+
+  removeFromSelection: (ids: string[]) => {
+    set(state => {
+      const newSelection = new Set(state.selectedIdeaIds)
+      ids.forEach(id => newSelection.delete(id))
+      return { selectedIdeaIds: newSelection }
+    })
+  },
+
+  clearSelection: () => {
+    set({ selectedIdeaIds: new Set<string>() })
   },
 
   // Keyboard shortcuts

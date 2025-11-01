@@ -12,8 +12,13 @@ export default function CanvasHeader() {
   const currentBrainDump = useStore(state => state.getCurrentBrainDump())
   const updateBrainDumpName = useStore(state => state.updateBrainDumpName)
   const ideas = useStore(state => state.ideas)
+  const selectedIdeaIds = useStore(state => state.selectedIdeaIds)
+  const deleteIdea = useStore(state => state.deleteIdea)
+  const clearSelection = useStore(state => state.clearSelection)
+  const openModal = useStore(state => state.openModal)
 
   const ideaCount = Object.keys(ideas).length
+  const selectedCount = selectedIdeaIds.size
 
   const handleEdit = useCallback(() => {
     if (currentBrainDump) {
@@ -45,6 +50,29 @@ export default function CanvasHeader() {
       handleCancel()
     }
   }, [handleSave, handleCancel])
+
+  const handleDelete = useCallback(async () => {
+    if (selectedCount === 0) return
+    
+    // Show confirmation
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${selectedCount} idea${selectedCount > 1 ? 's' : ''}? This action cannot be undone.`
+    )
+    
+    if (confirmed) {
+      try {
+        // Delete all selected ideas
+        const deletePromises = Array.from(selectedIdeaIds).map(id => deleteIdea(id))
+        await Promise.all(deletePromises)
+        
+        // Clear selection after deletion
+        clearSelection()
+      } catch (error) {
+        console.error('Failed to delete ideas:', error)
+        alert('Failed to delete some ideas. Please try again.')
+      }
+    }
+  }, [selectedCount, selectedIdeaIds, deleteIdea, clearSelection])
 
   if (!currentBrainDump) {
     return null
@@ -121,6 +149,33 @@ export default function CanvasHeader() {
               {ideaCount}
             </span>
           </div>
+
+          {/* Delete Button (visible when ideas are selected) */}
+          {selectedCount > 0 && (
+            <>
+              {/* Divider */}
+              <div className="w-px h-4 bg-gray-300 dark:border-gray-600"></div>
+              
+              <button
+                onClick={handleDelete}
+                className="flex items-center gap-1.5 px-2 py-1 rounded transition-colors hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400"
+                title={`Delete ${selectedCount} selected idea${selectedCount > 1 ? 's' : ''}`}
+              >
+                {/* Trash icon */}
+                <svg 
+                  className="w-4 h-4" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span className="text-sm font-medium">
+                  {selectedCount}
+                </span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 

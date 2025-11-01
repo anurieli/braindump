@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useRef, KeyboardEvent } from 'react'
+import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { Search, Plus, Paperclip, ArrowUp } from 'lucide-react'
 import { useStore, useStoreActions } from '@/store'
 
 export function QuickInput() {
   const [inputText, setInputText] = useState('')
   const [attachments, setAttachments] = useState<File[]>([])
+  const [attachmentPreviews, setAttachmentPreviews] = useState<string[]>([])
   const [isDragActive, setIsDragActive] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -15,6 +16,15 @@ export function QuickInput() {
   const { addIdea } = useStoreActions()
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
   const viewport = useStore(state => state.viewport)
+
+  // Create object URLs for image previews and clean them up on change/unmount
+  useEffect(() => {
+    const urls = attachments.map(file => file.type.startsWith('image/') ? URL.createObjectURL(file) : '')
+    setAttachmentPreviews(urls)
+    return () => {
+      urls.forEach(url => { if (url) URL.revokeObjectURL(url) })
+    }
+  }, [attachments])
 
   const handleSubmit = async () => {
     if (!inputText.trim() && attachments.length === 0) return
@@ -96,6 +106,7 @@ export function QuickInput() {
 
   const removeAttachment = (index: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== index))
+    setAttachmentPreviews(prev => prev.filter((_, i) => i !== index))
   }
 
   if (!currentBrainDumpId) {
@@ -110,7 +121,7 @@ export function QuickInput() {
             bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl 
             rounded-2xl shadow-2xl border border-gray-200/50 dark:border-gray-700/50
             transition-all duration-200
-            ${isDragActive ? 'ring-2 ring-blue-500 ring-opacity-50' : ''}
+            ${isDragActive ? 'ring-2 ring-blue-500/50 border-blue-400/60 border-dashed' : ''}
           `}
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
@@ -150,25 +161,50 @@ export function QuickInput() {
 
               {/* Attachments Preview */}
               {attachments.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {attachments.map((file, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center gap-1 px-2 py-1 bg-gray-100 
-                               dark:bg-gray-800 rounded-lg text-xs text-gray-600 
-                               dark:text-gray-400"
-                    >
-                      <Paperclip className="w-3 h-3" />
-                      <span className="max-w-[100px] truncate">{file.name}</span>
-                      <button
-                        onClick={() => removeAttachment(index)}
-                        className="ml-1 text-gray-400 hover:text-gray-600 
-                                 dark:hover:text-gray-300 transition-colors"
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  {attachments.map((file, index) => {
+                    const isImage = file.type.startsWith('image/')
+                    if (isImage) {
+                      return (
+                        <div key={index} className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                          {attachmentPreviews[index] && (
+                            <img src={attachmentPreviews[index]} alt={file.name} className="w-full h-full object-cover" />
+                          )}
+                          <button
+                            onClick={() => removeAttachment(index)}
+                            className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-gray-900 text-white dark:bg-white dark:text-gray-900 text-xs leading-6 text-center shadow-md"
+                            aria-label={`Remove ${file.name}`}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )
+                    }
+                    const ext = file.name.includes('.') ? file.name.split('.').pop() : ''
+                    return (
+                      <div
+                        key={index}
+                        className="flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded-lg text-xs text-gray-600 dark:text-gray-400 border border-gray-200/60 dark:border-gray-700/60"
                       >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+                        <Paperclip className="w-3 h-3" />
+                        <span className="max-w-[120px] truncate">{file.name}</span>
+                        {ext && <span className="uppercase text-[10px] text-gray-400 ml-1">.{ext}</span>}
+                        <button
+                          onClick={() => removeAttachment(index)}
+                          className="ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                          aria-label={`Remove ${file.name}`}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {attachments.length === 0 && (
+                <div className="mt-1 text-xs text-gray-400 dark:text-gray-600">
+                  Drag and drop files here, or click + to attach
                 </div>
               )}
             </div>

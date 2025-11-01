@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useCallback, useMemo } from 'react'
-import { Stage, Layer } from 'react-konva'
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react'
+import { Stage, Layer, Rect } from 'react-konva'
 import Konva from 'konva'
 import { useStore } from '@/store'
 import { debounce } from '@/lib/debounce'
@@ -27,6 +27,19 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
   // Get ideas from store 
   const ideas = useStore(state => state.ideas)
   const allIdeas = useMemo(() => Object.values(ideas), [ideas])
+  
+  // Selection-related store actions
+  const addToSelection = useStore(state => state.addToSelection)
+  const clearSelection = useStore(state => state.clearSelection)
+  
+  // Local state for selection rectangle
+  const [selectionBox, setSelectionBox] = useState<{
+    x: number
+    y: number
+    width: number
+    height: number
+    visible: boolean
+  } | null>(null)
   
   // Calculate visible ideas with useMemo to prevent infinite loops
   const visibleIdeas = useMemo(() => {
@@ -86,25 +99,75 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
     // Only handle clicks on empty space (not on ideas or other elements)
     if (e.target !== e.target.getStage()) return
     
-    // Future: Add logic to clear selections when clicking on empty space
-  }, [])
+    // Clear selections when clicking on empty space (if not dragging)
+    if (!selectionBox) {
+      clearSelection()
+    }
+  }, [clearSelection, selectionBox])
 
-  // Handle pan functionality (Ctrl + drag)
+  // Handle pan functionality (Cmd + drag) and selection rectangle
   const handleMouseDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     const isCtrlPressed = e.evt.ctrlKey || e.evt.metaKey
+    const stage = e.target.getStage()
+    if (!stage) return
     
+    // Handle panning (Cmd/Ctrl + drag)
     if (isCtrlPressed) {
       e.evt.preventDefault()
       setPanning(true)
-      const stage = e.target.getStage()
-      if (stage) {
-        stage.container().style.cursor = 'grabbing'
-        stage.startDrag()
-      }
+      stage.container().style.cursor = 'grabbing'
+      stage.startDrag()
+      return
+    }
+    
+    // Handle selection rectangle (drag on empty stage)
+    if (e.target === stage) {
+      const pointer = stage.getPointerPosition()
+      if (!pointer) return
+      
+      // Convert screen coordinates to world coordinates
+      const { x: stageX, y: stageY } = stage.position()
+      const zoom = stage.scaleX()
+      const worldX = (pointer.x - stageX) / zoom
+      const worldY = (pointer.y - stageY) / zoom
+      
+      setSelectionBox({
+        x: worldX,
+        y: worldY,
+        width: 0,
+        height: 0,
+        visible: true
+      })
     }
   }, [setPanning])
 
+  // Handle mouse move for selection rectangle
+  const handleMouseMove = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (!selectionBox || !selectionBox.visible) return
+    
+    const stage = e.target.getStage()
+    if (!stage) return
+    
+    const pointer = stage.getPointerPosition()
+    if (!pointer) return
+    
+    // Convert screen coordinates to world coordinates
+    const { x: stageX, y: stageY } = stage.position()
+    const zoom = stage.scaleX()
+    const worldX = (pointer.x - stageX) / zoom
+    const worldY = (pointer.y - stageY) / zoom
+    
+    // Update selection box dimensions
+    setSelectionBox({
+      ...selectionBox,
+      width: worldX - selectionBox.x,
+      height: worldY - selectionBox.y,
+      visible: true
+    })
+  }, [selectionBox])
+
   const handleMouseUp = useCallback(() => {
+    // Handle panning end
     if (isPanning) {
       setPanning(false)
       const stage = stageRef.current
@@ -123,8 +186,47 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
         // Trigger debounced save
         debouncedSaveViewport()
       }
+      return
     }
-  }, [isPanning, setPanning, updateViewport, debouncedSaveViewport])
+    
+    // Handle selection rectangle end
+    if (selectionBox && selectionBox.visible) {
+      const stage = stageRef.current
+      if (!stage) return
+      
+      // Calculate the normalized selection box (handle negative width/height)
+      const box = {
+        x: selectionBox.width >= 0 ? selectionBox.x : selectionBox.x + selectionBox.width,
+        y: selectionBox.height >= 0 ? selectionBox.y : selectionBox.y + selectionBox.height,
+        width: Math.abs(selectionBox.width),
+        height: Math.abs(selectionBox.height)
+      }
+      
+      // Find ideas that intersect with the selection box
+      const selectedIds: string[] = []
+      allIdeas.forEach(idea => {
+        const ideaBox = {
+          x: idea.position_x,
+          y: idea.position_y,
+          width: idea.width || 200,
+          height: idea.height || 100
+        }
+        
+        // Check if boxes intersect using Konva utility
+        if (Konva.Util.haveIntersection(box, ideaBox)) {
+          selectedIds.push(idea.id)
+        }
+      })
+      
+      // Update selection in store
+      if (selectedIds.length > 0) {
+        addToSelection(selectedIds)
+      }
+      
+      // Clear selection box
+      setSelectionBox(null)
+    }
+  }, [isPanning, setPanning, updateViewport, debouncedSaveViewport, selectionBox, allIdeas, addToSelection])
 
   const handleDragEnd = useCallback(() => {
     const stage = stageRef.current
@@ -210,6 +312,7 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
   const toggleSidebar = useStore(state => state.toggleSidebar)
   const createBrainDump = useStore(state => state.createBrainDump)
   const getCurrentBrainDump = useStore(state => state.getCurrentBrainDump)
+  const deleteIdea = useStore(state => state.deleteIdea)
 
   // Keyboard shortcuts handler
   useEffect(() => {
@@ -219,6 +322,28 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
         return
       }
 
+      // Delete or Backspace to delete selected ideas
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIdeaIds.size > 0) {
+        e.preventDefault()
+        const selectedCount = selectedIdeaIds.size
+        const confirmed = window.confirm(
+          `Are you sure you want to delete ${selectedCount} idea${selectedCount > 1 ? 's' : ''}? This action cannot be undone.`
+        )
+        
+        if (confirmed) {
+          const deletePromises = Array.from(selectedIdeaIds).map(id => deleteIdea(id))
+          Promise.all(deletePromises)
+            .then(() => {
+              clearSelection()
+              console.log(`🗑️ Deleted ${selectedCount} idea(s) via keyboard shortcut`)
+            })
+            .catch(error => {
+              console.error('Failed to delete ideas:', error)
+              alert('Failed to delete some ideas. Please try again.')
+            })
+        }
+        return
+      }
 
       // Ctrl+Shift+T or Cmd+Shift+T to toggle theme
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 't') {
@@ -309,7 +434,7 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [updateViewport, debouncedSaveViewport, enableAnimations, toggleTheme, toggleGrid, toggleSidebar, createBrainDump, getCurrentBrainDump])
+  }, [updateViewport, debouncedSaveViewport, enableAnimations, toggleTheme, toggleGrid, toggleSidebar, createBrainDump, getCurrentBrainDump, selectedIdeaIds, deleteIdea, clearSelection])
 
   // Update cursor based on panning state
   useEffect(() => {
@@ -340,6 +465,7 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
         height={height}
         draggable={true}
         onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onClick={handleStageClick}
         onDragEnd={handleDragEnd}
@@ -365,6 +491,21 @@ export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
               />
             )
           })}
+        </Layer>
+        <Layer>
+          {/* Selection rectangle */}
+          {selectionBox && selectionBox.visible && (
+            <Rect
+              x={selectionBox.width >= 0 ? selectionBox.x : selectionBox.x + selectionBox.width}
+              y={selectionBox.height >= 0 ? selectionBox.y : selectionBox.y + selectionBox.height}
+              width={Math.abs(selectionBox.width)}
+              height={Math.abs(selectionBox.height)}
+              stroke="#007AFF"
+              strokeWidth={1}
+              dash={[4, 4]}
+              fill="rgba(0, 122, 255, 0.1)"
+            />
+          )}
         </Layer>
       </Stage>
     </div>

@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { Group, Rect, Text } from 'react-konva'
 import { Idea as IdeaType } from '@/types'
-import { useStore } from '@/store'
+import { useStore, useIsIdeaSelected } from '@/store'
 
 interface IdeaProps {
   idea: IdeaType
@@ -22,14 +22,19 @@ export default function Idea({
     isSelected: false
   })
   const groupRef = useRef<any>(null)
+  const dragStartPositions = useRef<Map<string, { x: number; y: number }>>(new Map())
 
   // Store selectors
   const selectedIdeaId = useStore(state => state.selectedIdeaId)
   const selectIdea = useStore(state => state.selectIdea)
   const updateIdeaPosition = useStore(state => state.updateIdeaPosition)
+  const ideas = useStore(state => state.ideas)
+  const selectedIdeaIds = useStore(state => state.selectedIdeaIds)
+  const setSelection = useStore(state => state.setSelection)
 
-  // Check if this idea is selected
-  const isSelected = selectedIdeaId === idea.id
+  // Check if this idea is selected (using new multi-selection system)
+  const isMultiSelected = useIsIdeaSelected(idea.id)
+  const isSelected = selectedIdeaId === idea.id || isMultiSelected
 
   // Determine which text to display based on view state
   const getDisplayText = useCallback(() => {
@@ -98,8 +103,8 @@ export default function Idea({
 
 
     // Selection override
-    if (isSelected) {
-      strokeColor = '#3b82f6' // Blue border for selection
+    if (isSelected || isMultiSelected) {
+      strokeColor = '#007AFF' // Blue border for selection (iOS blue to match selection rectangle)
     }
 
     // Hover state
@@ -119,9 +124,76 @@ export default function Idea({
     setViewState(prev => ({ ...prev, isHovered: false }))
   }, [])
 
-  const handleClick = useCallback(() => {
-    selectIdea(idea.id)
-  }, [selectIdea, idea.id])
+  const handleClick = useCallback((e: any) => {
+    const isCtrlPressed = e.evt?.ctrlKey || e.evt?.metaKey
+    
+    if (isCtrlPressed) {
+      // Multi-select: toggle this idea in the selection
+      if (isMultiSelected) {
+        // Remove from selection
+        const newSelection = Array.from(selectedIdeaIds).filter(id => id !== idea.id)
+        setSelection(newSelection)
+      } else {
+        // Add to selection
+        setSelection([...Array.from(selectedIdeaIds), idea.id])
+      }
+    } else {
+      // Single select (old behavior for compatibility)
+      selectIdea(idea.id)
+      // Also set as the only selected idea
+      setSelection([idea.id])
+    }
+  }, [selectIdea, idea.id, isMultiSelected, selectedIdeaIds, setSelection])
+
+  const handleDragStart = useCallback((e: any) => {
+    // Record initial positions of all selected ideas
+    dragStartPositions.current.clear()
+    
+    if (isMultiSelected && selectedIdeaIds.size > 0) {
+      // Record positions of all selected ideas
+      selectedIdeaIds.forEach(id => {
+        const selectedIdea = ideas[id]
+        if (selectedIdea) {
+          dragStartPositions.current.set(id, {
+            x: selectedIdea.position_x || 0,
+            y: selectedIdea.position_y || 0
+          })
+        }
+      })
+    } else {
+      // Only this idea is being dragged
+      dragStartPositions.current.set(idea.id, {
+        x: idea.position_x || 0,
+        y: idea.position_y || 0
+      })
+    }
+  }, [isMultiSelected, selectedIdeaIds, ideas, idea.id, idea.position_x, idea.position_y])
+
+  const handleDragMove = useCallback((e: any) => {
+    if (!isMultiSelected || selectedIdeaIds.size === 0) return
+    
+    // Calculate delta from start position
+    const currentPos = { x: e.target.x(), y: e.target.y() }
+    const startPos = dragStartPositions.current.get(idea.id)
+    if (!startPos) return
+    
+    const dx = currentPos.x - startPos.x
+    const dy = currentPos.y - startPos.y
+    
+    // Apply delta to all selected ideas (optimistic update only)
+    selectedIdeaIds.forEach(id => {
+      if (id === idea.id) return // Skip the idea being dragged (Konva handles it)
+      
+      const startPosition = dragStartPositions.current.get(id)
+      if (startPosition) {
+        const newPos = {
+          x: startPosition.x + dx,
+          y: startPosition.y + dy
+        }
+        updateIdeaPosition(id, newPos)
+      }
+    })
+  }, [isMultiSelected, selectedIdeaIds, idea.id, updateIdeaPosition])
 
   const handleDragEnd = useCallback((e: any) => {
     const newPosition = {
@@ -129,9 +201,28 @@ export default function Idea({
       y: e.target.y()
     }
     
-    // Update position
-    updateIdeaPosition(idea.id, newPosition)
-  }, [updateIdeaPosition, idea.id])
+    if (isMultiSelected && selectedIdeaIds.size > 0) {
+      // Update all selected ideas (debounced batch API call will be triggered automatically)
+      selectedIdeaIds.forEach(id => {
+        const startPos = dragStartPositions.current.get(id)
+        if (startPos) {
+          const dx = newPosition.x - (dragStartPositions.current.get(idea.id)?.x || 0)
+          const dy = newPosition.y - (dragStartPositions.current.get(idea.id)?.y || 0)
+          
+          updateIdeaPosition(id, {
+            x: startPos.x + dx,
+            y: startPos.y + dy
+          })
+        }
+      })
+    } else {
+      // Single idea update
+      updateIdeaPosition(idea.id, newPosition)
+    }
+    
+    // Clear recorded positions
+    dragStartPositions.current.clear()
+  }, [updateIdeaPosition, idea.id, isMultiSelected, selectedIdeaIds])
 
 
   const dimensions = getDimensions()
@@ -147,6 +238,8 @@ export default function Idea({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}
+      onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       ideaId={idea.id} // Custom attribute for finding during drop
     >
