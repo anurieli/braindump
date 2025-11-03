@@ -1,6 +1,5 @@
 'use client'
 
-import { useMemo } from 'react';
 import { useStore } from '@/store';
 import { getThemeTextColor } from '@/lib/themes';
 
@@ -24,22 +23,34 @@ export default function BatchActions() {
       edgeIds: Array.from(selectedEdgeIds) 
     });
 
+    const errors: string[] = [];
+
     try {
       // Delete selected ideas (async operations)
       if (selectedIdeaIds.size > 0) {
-        console.log('Deleting ideas...');
+        console.log(`Deleting ${selectedIdeaIds.size} ideas...`);
         for (const id of Array.from(selectedIdeaIds)) {
-          console.log(`Deleting idea ${id}`);
-          await deleteIdea(id);
+          try {
+            console.log(`Deleting idea ${id}`);
+            await deleteIdea(id);
+          } catch (error) {
+            console.error(`Failed to delete idea ${id}:`, error);
+            errors.push(`idea ${id}`);
+          }
         }
       }
 
       // Delete selected edges (async operations)
       if (selectedEdgeIds.size > 0) {
-        console.log('Deleting edges...');
+        console.log(`Deleting ${selectedEdgeIds.size} edges...`);
         for (const id of Array.from(selectedEdgeIds)) {
-          console.log(`Deleting edge ${id}`);
-          await deleteEdge(id);
+          try {
+            console.log(`Deleting edge ${id}`);
+            await deleteEdge(id);
+          } catch (error) {
+            console.error(`Failed to delete edge ${id}:`, error);
+            errors.push(`edge ${id}`);
+          }
         }
       }
 
@@ -47,7 +58,11 @@ export default function BatchActions() {
       console.log('Clearing selection...');
       clearSelection();
       
-      console.log('✅ Deletion complete');
+      if (errors.length > 0) {
+        console.warn(`⚠️ Some items failed to delete: ${errors.join(', ')}`);
+      } else {
+        console.log('✅ All deletions complete');
+      }
     } catch (error) {
       console.error('❌ Error during batch delete:', error);
     }

@@ -59,6 +59,7 @@ export interface UiSlice {
   addToEdgeSelection: (ids: string[]) => void
   removeFromSelection: (ids: string[]) => void
   removeFromEdgeSelection: (ids: string[]) => void
+  toggleEdgeSelection: (id: string, multi?: boolean) => void
   clearSelection: () => void
   
   // Connection actions
@@ -213,6 +214,21 @@ export const createUiSlice: StateCreator<
       const newSelection = new Set(state.selectedEdgeIds)
       ids.forEach(id => newSelection.delete(id))
       return { selectedEdgeIds: newSelection }
+    })
+  },
+
+  toggleEdgeSelection: (id: string, multi = false) => {
+    set(state => {
+      const newSelection = multi ? new Set(state.selectedEdgeIds) : new Set<string>()
+      
+      if (newSelection.has(id)) {
+        newSelection.delete(id)
+      } else {
+        newSelection.add(id)
+      }
+      
+      // Clear idea selection when selecting edges
+      return { selectedEdgeIds: newSelection, selectedIdeaIds: new Set<string>() }
     })
   },
 

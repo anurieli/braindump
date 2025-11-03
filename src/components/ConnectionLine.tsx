@@ -42,75 +42,31 @@ export default function ConnectionLine() {
   const sourceCenterScreenX = connectionStartPosition.x;
   const sourceCenterScreenY = connectionStartPosition.y;
   
-  // Default target is mouse position (or source if mouse hasn't moved yet)
-  let targetScreenX = mousePos.x !== 0 ? mousePos.x : sourceCenterScreenX;
-  let targetScreenY = mousePos.y !== 0 ? mousePos.y : sourceCenterScreenY;
-  let lineColor = '#3b82f6'; // Blue by default
-  let showLabel = false;
-  let labelText = '';
-  let targetCenterScreenX = targetScreenX;
-  let targetCenterScreenY = targetScreenY;
+  // Target always follows mouse position - no snapping
+  const targetScreenX = mousePos.x !== 0 ? mousePos.x : sourceCenterScreenX;
+  const targetScreenY = mousePos.y !== 0 ? mousePos.y : sourceCenterScreenY;
   
-  // If hovering over a different node, snap to it
+  // Check if hovering over a node for color indication (but don't snap)
+  let lineColor = '#3b82f6'; // Blue by default
+  
   if (hoveredNodeId && hoveredNodeId !== connectionSourceId) {
-    const targetIdea = ideas[hoveredNodeId];
-    if (targetIdea) {
-      targetCenterScreenX = targetIdea.position_x * viewport.zoom + viewport.x;
-      targetCenterScreenY = targetIdea.position_y * viewport.zoom + viewport.y;
-      targetScreenX = targetCenterScreenX;
-      targetScreenY = targetCenterScreenY;
-      
-      // Check if edge already exists (check both directions)
-      const existingEdge = Object.values(edges).find(
-        edge => edge.brain_dump_id === currentBrainDumpId &&
-                edge.parent_id === connectionSourceId && 
-                edge.child_id === hoveredNodeId
-      );
-      
-      if (existingEdge) {
-        lineColor = '#ef4444'; // Red for deletion
-        showLabel = false;
-      } else {
-        lineColor = '#3b82f6'; // Blue for creation
-        showLabel = true;
-        labelText = 'new edge';
-      }
+    // Check if edge already exists
+    const existingEdge = Object.values(edges).find(
+      edge => edge.brain_dump_id === currentBrainDumpId &&
+              edge.parent_id === connectionSourceId && 
+              edge.child_id === hoveredNodeId
+    );
+    
+    if (existingEdge) {
+      lineColor = '#ef4444'; // Red for deletion
+    } else {
+      lineColor = '#10b981'; // Green for new connection
     }
   }
   
-  // Start from the center of the source node (will be behind the node visually)
+  // Start from the center of the source node
   const sourceScreenX = sourceCenterScreenX;
   const sourceScreenY = sourceCenterScreenY;
-  
-  const dx = targetScreenX - sourceCenterScreenX;
-  const dy = targetScreenY - sourceCenterScreenY;
-  
-  // If hovering over a node, also calculate edge intersection for target
-  if (hoveredNodeId && hoveredNodeId !== connectionSourceId) {
-    const targetIdea = ideas[hoveredNodeId];
-    if (targetIdea) {
-      const targetWidth = (targetIdea.width || 200) * viewport.zoom;
-      const targetHeight = (targetIdea.height || 100) * viewport.zoom;
-      const targetHalfWidth = targetWidth / 2;
-      const targetHalfHeight = targetHeight / 2;
-      
-      const angle = Math.atan2(dy, dx);
-      const tanAngle = Math.tan(angle);
-      
-      if (Math.abs(tanAngle) < targetHalfHeight / targetHalfWidth) {
-        // Intersects left or right edge of target
-        targetScreenX = targetCenterScreenX - (dx > 0 ? targetHalfWidth : -targetHalfWidth);
-        targetScreenY = targetCenterScreenY + (targetScreenX - targetCenterScreenX) * tanAngle;
-      } else {
-        // Intersects top or bottom edge of target
-        targetScreenY = targetCenterScreenY - (dy > 0 ? targetHalfHeight : -targetHalfHeight);
-        targetScreenX = targetCenterScreenX + (targetScreenY - targetCenterScreenY) / tanAngle;
-      }
-    }
-  }
-  
-  const midX = (sourceScreenX + targetScreenX) / 2;
-  const midY = (sourceScreenY + targetScreenY) / 2;
   
   return (
     <svg 
@@ -149,44 +105,6 @@ export default function ConnectionLine() {
         strokeLinecap="round"
         markerEnd="url(#arrowhead-connection)"
       />
-      
-      {/* Label when hovering over target */}
-      {showLabel && (
-        <g>
-          <rect
-            x={midX - 35}
-            y={midY - 12}
-            width={70}
-            height={24}
-            fill="white"
-            stroke={lineColor}
-            strokeWidth={2}
-            rx={4}
-            opacity={0.95}
-          />
-          <text
-            x={midX}
-            y={midY + 5}
-            textAnchor="middle"
-            fill={lineColor}
-            fontSize={12}
-            fontWeight={500}
-          >
-            {labelText}
-          </text>
-        </g>
-      )}
-      
-      {/* Circle at cursor when not hovering over a node */}
-      {!hoveredNodeId && (
-        <circle
-          cx={targetScreenX}
-          cy={targetScreenY}
-          r={8}
-          fill={lineColor}
-          opacity={0.5}
-        />
-      )}
     </svg>
   );
 }

@@ -173,8 +173,16 @@ export const createEdgesSlice: StateCreator<
   },
 
   deleteEdge: async (id: string) => {
+    console.log('🗑️ Deleting edge:', id)
     const edge = get().edges[id]
-    const brainDumpId = edge?.brain_dump_id
+    
+    if (!edge) {
+      console.error('❌ Edge not found in local state:', id)
+      return
+    }
+    
+    const brainDumpId = edge.brain_dump_id
+    console.log('Edge data:', { id, brainDumpId, parentId: edge.parent_id, childId: edge.child_id })
     
     // Optimistic removal
     set(state => {
@@ -184,20 +192,31 @@ export const createEdgesSlice: StateCreator<
     })
 
     try {
-      const { error } = await supabase
+      console.log('Calling Supabase delete for edge:', id)
+      const { error, data } = await supabase
         .from('edges')
         .delete()
         .eq('id', id)
+        .select()
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Supabase error deleting edge:', error)
+        throw error
+      }
+
+      console.log('✅ Edge deleted successfully:', data)
 
       // Refresh brain dump counts
       if (brainDumpId && get().refreshBrainDumpCounts) {
         get().refreshBrainDumpCounts(brainDumpId)
       }
     } catch (error) {
-      console.error('Failed to delete edge:', error)
-      // TODO: Restore edge on error
+      console.error('❌ Failed to delete edge, restoring:', error)
+      // Restore edge on error
+      set(state => ({
+        edges: { ...state.edges, [id]: edge }
+      }))
+      throw error
     }
   },
 

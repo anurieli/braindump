@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useStore } from '@/store';
 import { getThemeTextColor } from '@/lib/themes';
 
@@ -14,6 +14,8 @@ export default function EdgeRenderer() {
   const viewport = useStore(state => state.viewport);
   const connectionSourceId = useStore(state => state.connectionSourceId);
   const hoveredNodeId = useStore(state => state.hoveredNodeId);
+  const toggleEdgeSelection = useStore(state => state.toggleEdgeSelection);
+  const deleteEdge = useStore(state => state.deleteEdge);
   
   // Filter edges by current brain dump
   const filteredEdges = useMemo(() => {
@@ -22,6 +24,26 @@ export default function EdgeRenderer() {
       edge => edge.brain_dump_id === currentBrainDumpId
     );
   }, [edges, currentBrainDumpId]);
+  
+  // Handle edge click
+  const handleEdgeClick = useCallback((e: React.MouseEvent, edgeId: string) => {
+    e.stopPropagation();
+    const isMultiSelect = e.shiftKey || e.metaKey || e.ctrlKey;
+    
+    // Check if Delete/Backspace key is being held
+    if ((e as any).nativeEvent?.shiftKey && selectedEdgeIds.has(edgeId)) {
+      deleteEdge(edgeId);
+      return;
+    }
+    
+    toggleEdgeSelection(edgeId, isMultiSelect);
+  }, [toggleEdgeSelection, deleteEdge, selectedEdgeIds]);
+
+  // Handle edge double click - delete
+  const handleEdgeDoubleClick = useCallback((e: React.MouseEvent, edgeId: string) => {
+    e.stopPropagation();
+    deleteEdge(edgeId);
+  }, [deleteEdge]);
   
   if (!currentBrainDumpId || filteredEdges.length === 0) return null;
   
@@ -151,6 +173,8 @@ export default function EdgeRenderer() {
               stroke="transparent"
               strokeWidth="20"
               className="pointer-events-auto cursor-pointer"
+              onClick={(e) => handleEdgeClick(e, edge.id)}
+              onDoubleClick={(e) => handleEdgeDoubleClick(e, edge.id)}
             />
             
             {/* Visible straight line from source edge to target edge */}
