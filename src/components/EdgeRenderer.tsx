@@ -3,6 +3,7 @@
 import { useMemo, useCallback } from 'react';
 import { useStore } from '@/store';
 import { getThemeTextColor } from '@/lib/themes';
+import { nearestPointOnRect } from '@/lib/geometry';
 
 export default function EdgeRenderer() {
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId);
@@ -27,21 +28,27 @@ export default function EdgeRenderer() {
   
   // Handle edge click
   const handleEdgeClick = useCallback((e: React.MouseEvent, edgeId: string) => {
+    console.log('🔵 Edge clicked:', edgeId);
     e.stopPropagation();
+    e.preventDefault();
     const isMultiSelect = e.shiftKey || e.metaKey || e.ctrlKey;
     
     // Check if Delete/Backspace key is being held
     if ((e as any).nativeEvent?.shiftKey && selectedEdgeIds.has(edgeId)) {
+      console.log('🗑️ Deleting edge (shift+click):', edgeId);
       deleteEdge(edgeId);
       return;
     }
     
+    console.log('Toggling edge selection:', edgeId, 'multi:', isMultiSelect);
     toggleEdgeSelection(edgeId, isMultiSelect);
   }, [toggleEdgeSelection, deleteEdge, selectedEdgeIds]);
 
   // Handle edge double click - delete
   const handleEdgeDoubleClick = useCallback((e: React.MouseEvent, edgeId: string) => {
+    console.log('🔵🔵 Edge double-clicked (deleting):', edgeId);
     e.stopPropagation();
+    e.preventDefault();
     deleteEdge(edgeId);
   }, [deleteEdge]);
   
@@ -131,27 +138,29 @@ export default function EdgeRenderer() {
         
         if (distance === 0) return null; // Avoid division by zero
         
-        // Start from the center of the source node (will be behind the node visually)
-        const sourceX = sourceCenterX;
-        const sourceY = sourceCenterY;
-        
-        const angle = Math.atan2(dy, dx);
-        const tanAngle = Math.tan(angle);
-        
-        // Calculate intersection with target node edge (stop right at the edge)
-        const targetHalfWidth = targetWidth / 2;
-        const targetHalfHeight = targetHeight / 2;
-        
-        let targetX, targetY;
-        if (Math.abs(tanAngle) < targetHalfHeight / targetHalfWidth) {
-          // Intersects left or right edge of target
-          targetX = targetCenterX - (dx > 0 ? targetHalfWidth : -targetHalfWidth);
-          targetY = targetCenterY + (targetX - targetCenterX) * tanAngle;
-        } else {
-          // Intersects top or bottom edge of target
-          targetY = targetCenterY - (dy > 0 ? targetHalfHeight : -targetHalfHeight);
-          targetX = targetCenterX + (targetY - targetCenterY) / tanAngle;
-        }
+        const sourceRect = {
+          x: sourceCenterX - sourceWidth / 2,
+          y: sourceCenterY - sourceHeight / 2,
+          width: sourceWidth,
+          height: sourceHeight,
+        };
+
+        const targetRect = {
+          x: targetCenterX - targetWidth / 2,
+          y: targetCenterY - targetHeight / 2,
+          width: targetWidth,
+          height: targetHeight,
+        };
+
+        const { x: sourceX, y: sourceY } = nearestPointOnRect(
+          { x: targetCenterX, y: targetCenterY },
+          sourceRect
+        );
+
+        const { x: targetX, y: targetY } = nearestPointOnRect(
+          { x: sourceCenterX, y: sourceCenterY },
+          targetRect
+        );
         
         // Calculate midpoint for label (use edge intersection points)
         const midX = (sourceX + targetX) / 2;
@@ -164,19 +173,6 @@ export default function EdgeRenderer() {
         
         return (
           <g key={edge.id}>
-            {/* Invisible wider line for easier clicking */}
-            <line
-              x1={sourceX}
-              y1={sourceY}
-              x2={targetX}
-              y2={targetY}
-              stroke="transparent"
-              strokeWidth="20"
-              className="pointer-events-auto cursor-pointer"
-              onClick={(e) => handleEdgeClick(e, edge.id)}
-              onDoubleClick={(e) => handleEdgeDoubleClick(e, edge.id)}
-            />
-            
             {/* Visible straight line from source edge to target edge */}
             <line
               x1={sourceX}
@@ -192,7 +188,7 @@ export default function EdgeRenderer() {
             
             {/* Relationship type label */}
             {edge.type && (
-              <g>
+              <g className="pointer-events-none">
                 <rect
                   x={midX - 40}
                   y={midY - 12}
@@ -202,7 +198,6 @@ export default function EdgeRenderer() {
                   fill={willBeRemoved ? '#fee2e2' : (isSelected ? '#dbeafe' : 'white')}
                   stroke={lineColor}
                   strokeWidth={isSelected ? '2' : '1'}
-                  className="pointer-events-none"
                 />
                 <text
                   x={midX}
@@ -211,12 +206,25 @@ export default function EdgeRenderer() {
                   fontSize="10"
                   fontWeight={willBeRemoved ? 'bold' : (isSelected ? 'semibold' : 'normal')}
                   fill={willBeRemoved ? '#ef4444' : (isSelected ? '#3b82f6' : '#374151')}
-                  className="pointer-events-none select-none"
+                  className="select-none"
                 >
                   {edge.type}
                 </text>
               </g>
             )}
+            
+            {/* Invisible wider line for easier clicking - MUST be last to be on top */}
+            <line
+              x1={sourceX}
+              y1={sourceY}
+              x2={targetX}
+              y2={targetY}
+              stroke="transparent"
+              strokeWidth="20"
+              className="pointer-events-auto cursor-pointer"
+              onClick={(e) => handleEdgeClick(e, edge.id)}
+              onDoubleClick={(e) => handleEdgeDoubleClick(e, edge.id)}
+            />
           </g>
         );
       })}

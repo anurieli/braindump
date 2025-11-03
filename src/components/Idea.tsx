@@ -202,21 +202,28 @@ export default function Idea({
     }
     
     if (isMultiSelected && selectedIdeaIds.size > 0) {
-      // Update all selected ideas (debounced batch API call will be triggered automatically)
-      selectedIdeaIds.forEach(id => {
-        const startPos = dragStartPositions.current.get(id)
-        if (startPos) {
-          const dx = newPosition.x - (dragStartPositions.current.get(idea.id)?.x || 0)
-          const dy = newPosition.y - (dragStartPositions.current.get(idea.id)?.y || 0)
-          
-          updateIdeaPosition(id, {
-            x: startPos.x + dx,
-            y: startPos.y + dy
-          })
-        }
+      // Start batch for multi-move (group all position updates into one undo)
+      import('@/store').then(({ startBatch, endBatch }) => {
+        startBatch()
+        
+        // Update all selected ideas (debounced batch API call will be triggered automatically)
+        selectedIdeaIds.forEach(id => {
+          const startPos = dragStartPositions.current.get(id)
+          if (startPos) {
+            const dx = newPosition.x - (dragStartPositions.current.get(idea.id)?.x || 0)
+            const dy = newPosition.y - (dragStartPositions.current.get(idea.id)?.y || 0)
+            
+            updateIdeaPosition(id, {
+              x: startPos.x + dx,
+              y: startPos.y + dy
+            })
+          }
+        })
+        
+        endBatch()
       })
     } else {
-      // Single idea update
+      // Single idea update (normal history tracking)
       updateIdeaPosition(idea.id, newPosition)
     }
     

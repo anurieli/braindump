@@ -256,6 +256,25 @@ export default function Canvas() {
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!currentBrainDump) return;
 
+    const isZoomGesture = e.metaKey || e.shiftKey;
+
+    if (!isZoomGesture) {
+      e.preventDefault();
+
+      const multiplier = e.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+        ? window.innerHeight
+        : 1;
+
+      updateViewport({
+        x: viewport.x - e.deltaX * multiplier,
+        y: viewport.y - e.deltaY * multiplier,
+        zoom: viewport.zoom,
+      });
+      return;
+    }
+
     e.preventDefault();
     
     const delta = -e.deltaY * 0.001;
@@ -357,9 +376,21 @@ export default function Canvas() {
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const selectedIds = Array.from(selectedIdeaIds);
         if (selectedIds.length > 0) {
-          const deleteIdea = useStore.getState().deleteIdea;
-          selectedIds.forEach(id => deleteIdea(id));
-          clearSelection();
+          e.preventDefault();
+          // Import batch functions dynamically
+          import('@/store').then(({ startBatch, endBatch }) => {
+            const deleteIdea = useStore.getState().deleteIdea;
+            
+            // Start batch to group all deletes into one undo
+            startBatch();
+            
+            // Delete all selected ideas
+            selectedIds.forEach(id => deleteIdea(id));
+            clearSelection();
+            
+            // End batch
+            endBatch();
+          });
         }
       }
     };

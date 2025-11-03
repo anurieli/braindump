@@ -1,6 +1,6 @@
 'use client'
 
-import { useStore } from '@/store';
+import { useStore, startBatch, endBatch } from '@/store';
 import { getThemeTextColor } from '@/lib/themes';
 
 export default function BatchActions() {
@@ -24,6 +24,9 @@ export default function BatchActions() {
     });
 
     const errors: string[] = [];
+
+    // Start batch operation to group all deletes into one undo
+    startBatch();
 
     try {
       // Delete selected ideas (async operations)
@@ -65,6 +68,9 @@ export default function BatchActions() {
       }
     } catch (error) {
       console.error('❌ Error during batch delete:', error);
+    } finally {
+      // End batch operation and save one history snapshot
+      endBatch();
     }
   };
 

@@ -19,14 +19,49 @@ export const useStore = create<StoreState>()(
   )
 )
 
-// Subscribe to changes and auto-save history
+// Batch operation tracking
+let isBatchOperation = false
+let batchTimeout: NodeJS.Timeout | null = null
 let lastIdeasSnapshot = ''
 let lastEdgesSnapshot = ''
 
+// Start a batch operation (prevents individual history saves)
+export const startBatch = () => {
+  isBatchOperation = true
+  if (batchTimeout) {
+    clearTimeout(batchTimeout)
+    batchTimeout = null
+  }
+}
+
+// End a batch operation and save one history snapshot
+export const endBatch = () => {
+  isBatchOperation = false
+  // Save history after a small delay to ensure all state updates have completed
+  if (batchTimeout) clearTimeout(batchTimeout)
+  batchTimeout = setTimeout(() => {
+    const state = useStore.getState()
+    const ideasSnapshot = JSON.stringify(state.ideas)
+    const edgesSnapshot = JSON.stringify(state.edges)
+    
+    if (ideasSnapshot !== lastIdeasSnapshot || edgesSnapshot !== lastEdgesSnapshot) {
+      lastIdeasSnapshot = ideasSnapshot
+      lastEdgesSnapshot = edgesSnapshot
+      undoRedoManager.saveState({
+        ideas: JSON.parse(JSON.stringify(state.ideas)),
+        edges: JSON.parse(JSON.stringify(state.edges))
+      })
+    }
+  }, 50)
+}
+
+// Subscribe to changes and auto-save history (only when not in a batch)
 useStore.subscribe(
   (state) => ({ ideas: state.ideas, edges: state.edges }),
   (current) => {
-    const currentSnapshot = JSON.stringify(current)
+    // Skip if we're in a batch operation
+    if (isBatchOperation) return
+    
     const ideasSnapshot = JSON.stringify(current.ideas)
     const edgesSnapshot = JSON.stringify(current.edges)
     
@@ -36,12 +71,13 @@ useStore.subscribe(
       lastEdgesSnapshot = edgesSnapshot
       
       // Debounce history saves to avoid too many snapshots during rapid changes
-      setTimeout(() => {
+      if (batchTimeout) clearTimeout(batchTimeout)
+      batchTimeout = setTimeout(() => {
         undoRedoManager.saveState({
           ideas: JSON.parse(JSON.stringify(current.ideas)),
           edges: JSON.parse(JSON.stringify(current.edges))
         })
-      }, 100)
+      }, 150)
     }
   },
   { equalityFn: (a, b) => {
@@ -179,6 +215,8 @@ export const useStoreActions = () => {
     clearHistory,
     canUndo,
     canRedo,
-    saveCurrentState
+    saveCurrentState,
+    startBatch,
+    endBatch
   }
 }
