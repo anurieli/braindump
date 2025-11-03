@@ -1,6 +1,7 @@
 import { StateCreator } from 'zustand'
 import { BrainDump, Viewport } from '@/types'
 import { supabase } from '@/lib/supabase'
+import { getDemoSeedData } from '@/lib/demo-data'
 import type { StoreState } from '../index'
 
 export interface BrainDumpsSlice {
@@ -15,13 +16,29 @@ export interface BrainDumpsSlice {
   loadBrainDumps: () => Promise<void>
   switchBrainDump: (id: string) => Promise<void>
   createBrainDump: (name?: string) => Promise<string>
+  createDemoBrainDump: () => Promise<string>
   updateBrainDumpName: (id: string, name: string) => Promise<void>
   archiveBrainDump: (id: string) => Promise<void>
   updateViewport: (viewport: Viewport) => void
   saveViewport: () => Promise<void>
+  updateBrainDumpTheme: (id: string, theme: string) => Promise<void>
+  refreshBrainDumpCounts: (id: string) => Promise<void>
 
   // Selectors
   getCurrentBrainDump: () => BrainDump | null
+}
+
+const generateId = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID()
+  }
+
+  // Fallback UUID v4 generator
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, char => {
+    const random = Math.random() * 16 | 0
+    const value = char === 'x' ? random : (random & 0x3) | 0x8
+    return value.toString(16)
+  })
 }
 
 export const createBrainDumpsSlice: StateCreator<
@@ -42,6 +59,7 @@ export const createBrainDumpsSlice: StateCreator<
     set({ isLoading: true, error: null })
     
     try {
+      // Fetch brain dumps
       const { data, error } = await supabase
         .from('brain_dumps')
         .select('*')
@@ -50,15 +68,45 @@ export const createBrainDumpsSlice: StateCreator<
 
       if (error) throw error
 
+      // Fetch counts for each brain dump
+      const brainDumpsWithCounts = await Promise.all(
+        (data || []).map(async (brainDump) => {
+          // Get idea count
+          const { count: ideaCount } = await supabase
+            .from('ideas')
+            .select('*', { count: 'exact', head: true })
+            .eq('brain_dump_id', brainDump.id)
+          
+          // Get edge count
+          const { count: edgeCount } = await supabase
+            .from('edges')
+            .select('*', { count: 'exact', head: true })
+            .eq('brain_dump_id', brainDump.id)
+          
+          return {
+            ...brainDump,
+            idea_count: ideaCount || 0,
+            edge_count: edgeCount || 0
+          }
+        })
+      )
+
       set({ 
-        brainDumps: data || [],
+        brainDumps: brainDumpsWithCounts,
         isLoading: false 
       })
 
-      // If no current brain dump is selected, select the first one
       const currentId = get().currentBrainDumpId
-      if (!currentId && data && data.length > 0) {
-        get().switchBrainDump(data[0].id)
+
+      if (!brainDumpsWithCounts || brainDumpsWithCounts.length === 0) {
+        set({ currentBrainDumpId: null })
+        return
+      }
+
+      const hasCurrent = currentId ? brainDumpsWithCounts.some(bd => bd.id === currentId) : false
+
+      if (!currentId || !hasCurrent) {
+        await get().switchBrainDump(brainDumpsWithCounts[0].id)
       }
     } catch (error) {
       set({ 
@@ -77,7 +125,7 @@ export const createBrainDumpsSlice: StateCreator<
       await get().saveViewport()
     }
 
-    // Switch to new brain dump and restore its viewport
+    // Switch to new brain dump and restore its viewport and theme
     set({
       currentBrainDumpId: id,
       viewport: {
@@ -86,6 +134,11 @@ export const createBrainDumpsSlice: StateCreator<
         zoom: brainDump.viewport_zoom
       }
     })
+    
+    // Load theme from brain dump if available
+    if (brainDump.theme) {
+      get().setTheme(brainDump.theme)
+    }
   },
 
   createBrainDump: async (name = 'Untitled Dump') => {
@@ -101,9 +154,20 @@ export const createBrainDumpsSlice: StateCreator<
       if (error) throw error
       if (!data) throw new Error('No data returned from insert')
 
-      // Add to local state
+      // Fetch counts for the new brain dump
+      const { count: ideaCount } = await supabase
+        .from('ideas')
+        .select('*', { count: 'exact', head: true })
+        .eq('brain_dump_id', data.id)
+      
+      const { count: edgeCount } = await supabase
+        .from('edges')
+        .select('*', { count: 'exact', head: true })
+        .eq('brain_dump_id', data.id)
+
+      // Add to local state with counts
       set(state => ({
-        brainDumps: [data, ...state.brainDumps],
+        brainDumps: [{ ...data, idea_count: ideaCount || 0, edge_count: edgeCount || 0 }, ...state.brainDumps],
         isLoading: false
       }))
 
@@ -114,6 +178,86 @@ export const createBrainDumpsSlice: StateCreator<
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to create brain dump',
+        isLoading: false
+      })
+      throw error
+    }
+  },
+
+  createDemoBrainDump: async () => {
+    set({ isLoading: true, error: null })
+
+    try {
+      const { ideas, edges } = getDemoSeedData()
+
+      const { data: brainDump, error: brainDumpError } = await supabase
+        .from('brain_dumps')
+        .insert({
+          name: 'Demo Brain Dump',
+          viewport_x: -150,
+          viewport_y: -120,
+          viewport_zoom: 0.85
+        })
+        .select()
+        .single()
+
+      if (brainDumpError) throw brainDumpError
+      if (!brainDump) throw new Error('Failed to create demo brain dump')
+
+      const brainDumpId = brainDump.id
+
+      const ideaRows = ideas.map(template => ({
+        id: generateId(),
+        brain_dump_id: brainDumpId,
+        text: template.text,
+        position_x: template.x,
+        position_y: template.y,
+        width: template.width,
+        height: template.height,
+        state: 'ready'
+      }))
+
+      const ideaIdMap = ideas.reduce<Record<string, string>>((acc, template, index) => {
+        acc[template.key] = ideaRows[index].id
+        return acc
+      }, {})
+
+      if (ideaRows.length > 0) {
+        const { error: ideasError } = await supabase
+          .from('ideas')
+          .insert(ideaRows)
+
+        if (ideasError) throw ideasError
+      }
+
+      if (edges.length > 0) {
+        const edgeRows = edges.map(template => ({
+          id: generateId(),
+          brain_dump_id: brainDumpId,
+          parent_id: ideaIdMap[template.parentKey],
+          child_id: ideaIdMap[template.childKey],
+          type: template.type,
+          note: template.note
+        }))
+
+        const { error: edgesError } = await supabase
+          .from('edges')
+          .insert(edgeRows)
+
+        if (edgesError) throw edgesError
+      }
+
+      set(state => ({
+        brainDumps: [{ ...brainDump, idea_count: ideaRows.length, edge_count: edges.length }, ...state.brainDumps],
+        isLoading: false
+      }))
+
+      await get().switchBrainDump(brainDumpId)
+
+      return brainDumpId
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to create demo brain dump',
         isLoading: false
       })
       throw error
@@ -138,6 +282,28 @@ export const createBrainDumpsSlice: StateCreator<
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to update brain dump name'
+      })
+    }
+  },
+
+  updateBrainDumpTheme: async (id: string, theme: string) => {
+    try {
+      const { error } = await supabase
+        .from('brain_dumps')
+        .update({ theme })
+        .eq('id', id)
+
+      if (error) throw error
+
+      // Update local state
+      set(state => ({
+        brainDumps: state.brainDumps.map(bd => 
+          bd.id === id ? { ...bd, theme: theme as any } : bd
+        )
+      }))
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to update brain dump theme'
       })
     }
   },
@@ -213,5 +379,32 @@ export const createBrainDumpsSlice: StateCreator<
   getCurrentBrainDump: () => {
     const { brainDumps, currentBrainDumpId } = get()
     return brainDumps.find(bd => bd.id === currentBrainDumpId) || null
+  },
+
+  refreshBrainDumpCounts: async (id: string) => {
+    try {
+      // Get idea count
+      const { count: ideaCount } = await supabase
+        .from('ideas')
+        .select('*', { count: 'exact', head: true })
+        .eq('brain_dump_id', id)
+      
+      // Get edge count
+      const { count: edgeCount } = await supabase
+        .from('edges')
+        .select('*', { count: 'exact', head: true })
+        .eq('brain_dump_id', id)
+      
+      // Update local state
+      set(state => ({
+        brainDumps: state.brainDumps.map(bd =>
+          bd.id === id
+            ? { ...bd, idea_count: ideaCount || 0, edge_count: edgeCount || 0 }
+            : bd
+        )
+      }))
+    } catch (error) {
+      console.error('Failed to refresh brain dump counts:', error)
+    }
   }
 })

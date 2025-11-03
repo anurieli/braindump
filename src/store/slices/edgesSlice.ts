@@ -133,6 +133,11 @@ export const createEdgesSlice: StateCreator<
         return { edges: newEdges }
       })
 
+      // Refresh brain dump counts
+      if (get().refreshBrainDumpCounts) {
+        get().refreshBrainDumpCounts(currentBrainDumpId)
+      }
+
       return data.id
     } catch (error) {
       // Remove temp edge on error
@@ -168,6 +173,9 @@ export const createEdgesSlice: StateCreator<
   },
 
   deleteEdge: async (id: string) => {
+    const edge = get().edges[id]
+    const brainDumpId = edge?.brain_dump_id
+    
     // Optimistic removal
     set(state => {
       const newEdges = { ...state.edges }
@@ -182,6 +190,11 @@ export const createEdgesSlice: StateCreator<
         .eq('id', id)
 
       if (error) throw error
+
+      // Refresh brain dump counts
+      if (brainDumpId && get().refreshBrainDumpCounts) {
+        get().refreshBrainDumpCounts(brainDumpId)
+      }
     } catch (error) {
       console.error('Failed to delete edge:', error)
       // TODO: Restore edge on error

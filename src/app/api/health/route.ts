@@ -132,7 +132,6 @@ export async function GET(request: NextRequest) {
     const errorResponse = formatErrorResponse(error as Error)
     return NextResponse.json({
       status: 'unhealthy',
-      timestamp: new Date().toISOString(),
       ...errorResponse
     }, { status: 503 })
   }

@@ -172,7 +172,7 @@ export function asyncHandler(fn: Function) {
 // Error logging utility
 export function logError(error: Error | AppError, context?: any) {
   const timestamp = new Date().toISOString()
-  const errorInfo = {
+  const errorInfo: any = {
     timestamp,
     message: error.message,
     stack: error.stack,

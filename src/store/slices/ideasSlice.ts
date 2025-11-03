@@ -1,5 +1,8 @@
 import { StateCreator } from 'zustand'
-import { Idea } from '@/types'
+import { IdeaDB } from '@/types'
+
+// Alias for easier use in the store
+type Idea = IdeaDB
 import { supabase } from '@/lib/supabase'
 import { generateEmbedding, generateSummary, cleanGrammar } from '@/lib/openai'
 import { positionDebouncer } from '@/lib/debounce'
@@ -129,6 +132,11 @@ export const createIdeasSlice: StateCreator<
       // Process AI enhancements in background
       get().processIdeaAI(data.id)
 
+      // Refresh brain dump counts
+      if (get().refreshBrainDumpCounts) {
+        get().refreshBrainDumpCounts(currentBrainDumpId)
+      }
+
       return data.id
     } catch (error) {
       // Remove temp idea on error
@@ -193,6 +201,9 @@ export const createIdeasSlice: StateCreator<
   },
 
   deleteIdea: async (id: string) => {
+    const idea = get().ideas[id]
+    const brainDumpId = idea?.brain_dump_id
+    
     // Optimistic removal
     set(state => {
       const newIdeas = { ...state.ideas }
@@ -207,6 +218,11 @@ export const createIdeasSlice: StateCreator<
         .eq('id', id)
 
       if (error) throw error
+
+      // Refresh brain dump counts
+      if (brainDumpId && get().refreshBrainDumpCounts) {
+        get().refreshBrainDumpCounts(brainDumpId)
+      }
     } catch (error) {
       console.error('Failed to delete idea:', error)
       // TODO: Restore idea on error
@@ -225,7 +241,7 @@ export const createIdeasSlice: StateCreator<
       const updates: Partial<Idea> = {}
 
       // Generate summary if text is long enough
-      if (idea.text.length > 50) {
+      if (idea.text && idea.text.length > 50) {
         const summary = await generateSummary(idea.text)
         updates.summary = summary
       }

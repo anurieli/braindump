@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { useStore } from '@/store'
+import { themes, ThemeType } from '@/lib/themes'
 
 export default function SettingsModal() {
   const activeModal = useStore(state => state.activeModal)
@@ -12,12 +13,14 @@ export default function SettingsModal() {
   const isGridVisible = useStore(state => state.isGridVisible)
   const enableAnimations = useStore(state => state.enableAnimations)
   const renderQuality = useStore(state => state.renderQuality)
+  const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
   
   // Actions
   const setTheme = useStore(state => state.setTheme)
   const setGridVisible = useStore(state => state.setGridVisible)
   const toggleAnimations = useStore(state => state.toggleAnimations)
   const setRenderQuality = useStore(state => state.setRenderQuality)
+  const updateBrainDumpTheme = useStore(state => state.updateBrainDumpTheme)
   
   const isOpen = activeModal === 'settings'
 
@@ -67,23 +70,47 @@ export default function SettingsModal() {
             <div className="space-y-4">
               
               {/* Theme Setting */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Theme
-                  </label>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Choose your preferred color scheme
-                  </p>
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                  Theme
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  Choose your preferred color scheme
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.values(themes).map((themeOption) => (
+                    <button
+                      key={themeOption.name}
+                      onClick={async () => {
+                        setTheme(themeOption.name)
+                        // Save theme to current brain dump if available
+                        if (currentBrainDumpId) {
+                          await updateBrainDumpTheme(currentBrainDumpId, themeOption.name)
+                        }
+                      }}
+                      className={`p-3 rounded-lg border-2 transition-all text-left ${
+                        theme === themeOption.name
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-5 h-5 rounded-full border border-gray-300 dark:border-gray-600 flex-shrink-0"
+                          style={{
+                            background: themeOption.gradient || themeOption.backgroundColor,
+                          }}
+                        />
+                        <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                          {themeOption.displayName}
+                        </span>
+                        {theme === themeOption.name && (
+                          <span className="ml-auto text-blue-500">✓</span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
                 </div>
-                <select
-                  value={theme}
-                  onChange={(e) => setTheme(e.target.value as 'light' | 'dark')}
-                  className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="light">☀️ Light</option>
-                  <option value="dark">🌙 Dark</option>
-                </select>
               </div>
 
               {/* Grid Visibility */}

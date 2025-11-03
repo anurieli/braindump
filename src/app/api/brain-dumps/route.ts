@@ -6,11 +6,13 @@ export async function GET() {
   try {
     const supabase = createServerClient()
     
+    // Fetch brain dumps with counts using subqueries
     const { data, error } = await supabase
       .from('brain_dumps')
       .select(`
         *,
-        ideas(count)
+        ideas:ideas(count),
+        edges:edges(count)
       `)
       .is('archived_at', null)
       .order('updated_at', { ascending: false })
@@ -25,8 +27,10 @@ export async function GET() {
 
     const brainDumpsWithCounts = data.map(bd => ({
       ...bd,
-      idea_count: bd.ideas?.length || 0,
-      ideas: undefined
+      idea_count: Array.isArray(bd.ideas) ? bd.ideas.length : 0,
+      edge_count: Array.isArray(bd.edges) ? bd.edges.length : 0,
+      ideas: undefined,
+      edges: undefined
     }))
 
     return NextResponse.json({

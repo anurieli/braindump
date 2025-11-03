@@ -61,8 +61,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    let attachmentUrl: string
-    let attachmentType: string
+    let attachmentUrl: string = ''
+    let attachmentType: string = 'file'
     let filename: string | null = null
     let metadata: any = {}
 

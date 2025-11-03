@@ -1,279 +1,216 @@
 'use client'
 
-import { useState } from 'react'
-import { useStore } from '@/store'
+import { useState } from 'react';
+import { useStore } from '@/store';
+import { signOut } from '@/lib/auth-helpers';
+import { useRouter } from 'next/navigation';
+import { 
+  ChevronRight, 
+  Plus, 
+  Trash2, 
+  Edit2,
+  LogOut,
+  Brain,
+  Check
+} from 'lucide-react';
+import { Input } from '@/components/ui/input';
 
 export default function SidePanel() {
-  const [hoveredBrainDump, setHoveredBrainDump] = useState<string | null>(null)
+  const router = useRouter();
+  const brainDumps = useStore(state => state.brainDumps);
+  const currentBrainDumpId = useStore(state => state.currentBrainDumpId);
   
-  // Store selectors
-  const isSidebarOpen = useStore(state => state.isSidebarOpen)
-  const brainDumps = useStore(state => state.brainDumps)
-  const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
-  const ideas = useStore(state => state.ideas)
-  const createBrainDump = useStore(state => state.createBrainDump)
-  const switchBrainDump = useStore(state => state.switchBrainDump)
-  const toggleSidebar = useStore(state => state.toggleSidebar)
-
-  // Count ideas for current brain dump
-  const getIdeaCount = (brainDumpId: string) => {
-    return Object.values(ideas).filter(idea => idea.brain_dump_id === brainDumpId).length
-  }
-
-  const handleCreateNew = async () => {
-    const name = `Brain Dump ${new Date().toLocaleDateString()}`
-    try {
-      await createBrainDump(name)
-      console.log('🧠 New brain dump created from sidebar')
-    } catch (error) {
-      console.error('Failed to create brain dump:', error)
+  const switchBrainDump = useStore(state => state.switchBrainDump);
+  const createBrainDump = useStore(state => state.createBrainDump);
+  const updateBrainDumpName = useStore(state => state.updateBrainDumpName);
+  const archiveBrainDump = useStore(state => state.archiveBrainDump);
+  
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  
+  const handleLogout = async () => {
+    await signOut();
+    router.push('/login');
+  };
+  
+  const handleCreateBrainDump = async () => {
+    const id = await createBrainDump('New Brain Dump');
+    setEditingId(id);
+    setEditingName('New Brain Dump');
+  };
+  
+  const handleStartEdit = (id: string, name: string) => {
+    setEditingId(id);
+    setEditingName(name);
+  };
+  
+  const handleSaveEdit = async () => {
+    if (editingId && editingName.trim()) {
+      await updateBrainDumpName(editingId, editingName.trim());
     }
-  }
-
-  const handleSwitchBrainDump = async (brainDumpId: string) => {
-    try {
-      await switchBrainDump(brainDumpId)
-      console.log(`🔄 Switched to brain dump: ${brainDumpId}`)
-    } catch (error) {
-      console.error('Failed to switch brain dump:', error)
+    setEditingId(null);
+    setEditingName('');
+  };
+  
+  const handleDelete = async (id: string) => {
+    if (confirm('Are you sure you want to delete this brain dump?')) {
+      await archiveBrainDump(id);
     }
-  }
+  };
 
-  const handleDuplicate = async (brainDump: { name: string; id: string }) => {
-    const duplicateName = `${brainDump.name} (Copy)`
-    try {
-      await createBrainDump(duplicateName)
-      console.log(`📋 Duplicated brain dump: ${brainDump.name}`)
-    } catch (error) {
-      console.error('Failed to duplicate brain dump:', error)
+  const formatDate = (date: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) {
+      return 'just now';
+    } else if (diffMins < 60) {
+      return `${diffMins}m ago`;
+    } else if (diffHours < 24) {
+      return `${diffHours}h ago`;
+    } else if (diffDays < 7) {
+      return `${diffDays}d ago`;
+    } else {
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric',
+        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+      });
     }
-  }
+  };
 
-  const getBrainDumpInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase())
-      .join('')
-      .slice(0, 2)
-  }
-
-  const handlePanelClick = () => {
-    if (!isSidebarOpen) {
-      toggleSidebar()
-    }
-  }
-
-  // Collapsed state (64px wide)
-  if (!isSidebarOpen) {
-    return (
-      <div 
-        className="h-full w-16 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-lg flex flex-col cursor-pointer transition-all duration-300 ease-in-out"
-        onClick={handlePanelClick}
-      >
-        {/* Collapsed Header */}
-        <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-center">
-          <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center">
-            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
+  return (
+    <div className="w-80 h-full bg-gray-50 flex flex-col">
+      {/* Header */}
+      <div className="p-6 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center">
+            <Brain className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Hi, anurieli365</h1>
           </div>
         </div>
-
-        {/* New Brain Dump Button - Collapsed */}
-        <div className="p-2 border-b border-gray-200 dark:border-gray-700">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              handleCreateNew()
-            }}
-            className="w-full aspect-square bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center transition-colors"
-            title="New Brain Dump"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Brain Dumps - Collapsed Icons */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-2">
-          {Object.values(brainDumps).map((brainDump) => {
-            const isActive = brainDump.id === currentBrainDumpId
-            const ideaCount = getIdeaCount(brainDump.id)
-            const initials = getBrainDumpInitials(brainDump.name)
-
+        <ChevronRight className="w-5 h-5 text-gray-400" />
+      </div>
+      
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-6">
+        {/* New Brain Dump Button */}
+        <button
+          onClick={handleCreateBrainDump}
+          className="w-full bg-gray-200 hover:bg-gray-300 rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 transition-colors"
+        >
+          <Plus className="w-5 h-5 text-gray-700" />
+          <span className="text-gray-700 font-medium">New Brain Dump</span>
+        </button>
+        
+        {/* Brain Dumps List */}
+        <div className="space-y-4">
+          {brainDumps.map(brainDump => {
+            const isActive = brainDump.id === currentBrainDumpId;
+            const isEditing = editingId === brainDump.id;
+            
+            // Use counts from database (stored in brainDump) or fallback to 0
+            const ideaCount = brainDump.idea_count ?? 0;
+            const connectionCount = brainDump.edge_count ?? 0;
+            const lastUpdated = brainDump.updated_at ? new Date(brainDump.updated_at) : new Date();
+            
             return (
               <div
                 key={brainDump.id}
-                className="relative group"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleSwitchBrainDump(brainDump.id)
-                }}
+                className={`
+                  group bg-white rounded-2xl p-6 cursor-pointer transition-all hover:shadow-sm border-2 relative
+                  ${isActive ? 'border-purple-500 bg-purple-50 shadow-md' : 'border-gray-200'}
+                `}
+                onClick={() => !isEditing && switchBrainDump(brainDump.id)}
               >
-                <div
-                  className={`w-full aspect-square rounded-lg cursor-pointer transition-all flex items-center justify-center text-xs font-bold relative ${
-                    isActive 
-                      ? 'bg-blue-100 dark:bg-blue-900 border-2 border-blue-500 text-blue-900 dark:text-blue-100' 
-                      : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
-                  }`}
-                  title={`${brainDump.name} (${ideaCount} ideas)`}
-                >
-                  {initials}
-                  {/* Idea count badge */}
-                  {ideaCount > 0 && (
-                    <div className="absolute -top-1 -right-1 bg-yellow-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold">
-                      {ideaCount > 99 ? '99+' : ideaCount}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Expand indicator */}
-        <div className="p-2 border-t border-gray-200 dark:border-gray-700 flex justify-center">
-          <div className="text-gray-400 text-xs">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Expanded state (256px wide)
-  return (
-    <div className="h-full w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-lg flex flex-col transition-all duration-300 ease-in-out">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          Brain Dumps
-        </h2>
-        <button
-          onClick={toggleSidebar}
-          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-          title="Collapse Side Panel (Ctrl+/)"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-      </div>
-
-      {/* New Brain Dump Button */}
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-        <button
-          onClick={handleCreateNew}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 flex items-center gap-2 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          New Brain Dump
-        </button>
-      </div>
-
-      {/* Brain Dumps List */}
-      <div className="flex-1 overflow-y-auto">
-        {Object.values(brainDumps).length === 0 ? (
-          <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-            <div className="text-4xl mb-2">🧠</div>
-            <p className="text-sm">No brain dumps yet</p>
-            <p className="text-xs mt-1">Create your first one above!</p>
-          </div>
-        ) : (
-          <div className="space-y-1 p-2">
-            {Object.values(brainDumps).map((brainDump) => {
-              const isActive = brainDump.id === currentBrainDumpId
-              const ideaCount = getIdeaCount(brainDump.id)
-              const isHovered = hoveredBrainDump === brainDump.id
-
-              return (
-                <div
-                  key={brainDump.id}
-                  className={`relative rounded-lg p-3 cursor-pointer transition-all ${
-                    isActive 
-                      ? 'bg-blue-100 dark:bg-blue-900 border border-blue-300 dark:border-blue-700' 
-                      : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
-                  onMouseEnter={() => setHoveredBrainDump(brainDump.id)}
-                  onMouseLeave={() => setHoveredBrainDump(null)}
-                  onClick={() => handleSwitchBrainDump(brainDump.id)}
-                >
-                  {/* Brain Dump Info */}
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <h3 className={`font-medium truncate ${
-                        isActive ? 'text-blue-900 dark:text-blue-100' : 'text-gray-900 dark:text-gray-100'
-                      }`}>
-                        {brainDump.name}
-                      </h3>
-                      <div className="flex items-center gap-3 mt-1">
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {new Date(brainDump.created_at).toLocaleDateString()}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <svg className="w-3 h-3 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.477.859h4z" />
-                          </svg>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {ideaCount}
-                          </span>
-                        </div>
+                {/* Active indicator badge */}
+                {isActive && (
+                  <div className="absolute top-3 right-3 w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
+                    <Check className="w-4 h-4 text-white" />
+                  </div>
+                )}
+                
+                {isEditing ? (
+                  <Input
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onBlur={handleSaveEdit}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveEdit();
+                      if (e.key === 'Escape') setEditingId(null);
+                    }}
+                    autoFocus
+                    className="text-lg font-semibold border-none p-0 h-auto focus:ring-0"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3 flex-1">
+                        <span className="text-2xl">👋</span>
+                        <h3 className={`text-lg font-semibold ${isActive ? 'text-purple-900' : 'text-gray-900'}`}>
+                          {brainDump.name}
+                        </h3>
+                      </div>
+                      
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStartEdit(brainDump.id, brainDump.name);
+                          }}
+                          className="p-1 hover:bg-gray-100 rounded transition-colors"
+                        >
+                          <Edit2 className="w-4 h-4 text-gray-500" />
+                        </button>
+                        
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(brainDump.id);
+                          }}
+                          className="p-1 hover:bg-red-50 rounded transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-500" />
+                        </button>
                       </div>
                     </div>
-
-                    {/* Active Indicator */}
-                    {isActive && (
-                      <div className="w-2 h-2 bg-blue-600 rounded-full ml-2 mt-1 flex-shrink-0"></div>
-                    )}
-                  </div>
-
-                  {/* Hover Menu */}
-                  {isHovered && !isActive && (
-                    <div className="absolute right-2 top-2 flex gap-1">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleSwitchBrainDump(brainDump.id)
-                        }}
-                        className="bg-white dark:bg-gray-700 rounded p-1 shadow-md hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-                        title="Enter"
-                      >
-                        <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDuplicate(brainDump)
-                        }}
-                        className="bg-white dark:bg-gray-700 rounded p-1 shadow-md hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-                        title="Duplicate"
-                      >
-                        <svg className="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-        </svg>
-                      </button>
+                    
+                    <div className={`text-sm mb-3 ${isActive ? 'text-purple-700' : 'text-gray-600'}`}>
+                      {ideaCount} ideas • {connectionCount} connections
                     </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
+                    
+                    <div className="text-gray-400 text-xs">
+                      Updated {formatDate(lastUpdated)}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
-
-      {/* Footer */}
-      <div className="p-3 border-t border-gray-200 dark:border-gray-700 text-center">
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          Press <kbd className="bg-gray-100 dark:bg-gray-700 px-1 rounded text-gray-700 dark:text-gray-300">Ctrl+/</kbd> to toggle
-        </p>
+      
+      {/* User Section */}
+      <div className="p-6 border-t border-gray-200">
+        <div className="mb-4">
+          <div className="text-gray-900 font-medium">anurieli365</div>
+          <div className="text-gray-500 text-sm">anurieli365@gmail.com</div>
+        </div>
+        
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-3 text-gray-600 hover:text-gray-800 transition-colors"
+        >
+          <LogOut className="w-4 h-4" />
+          <span>Log Out</span>
+        </button>
       </div>
     </div>
-  )
+  );
 }

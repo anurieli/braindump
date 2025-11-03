@@ -38,7 +38,7 @@ export default function Idea({
 
   // Determine which text to display based on view state
   const getDisplayText = useCallback(() => {
-    const text = idea.text || 'Loading...'
+    const text = idea.content || 'Loading...'
     const summary = idea.summary || ''
     
     if (viewState.isHovered && text.length > 0) {
@@ -57,13 +57,13 @@ export default function Idea({
       }
       return text
     }
-  }, [viewState.isHovered, idea.text, idea.summary])
+  }, [viewState.isHovered, idea.content, idea.summary])
 
   // Calculate dynamic dimensions based on text and view state
   const getDimensions = useCallback(() => {
     const baseWidth = idea.width || 200
     const baseHeight = idea.height || 100
-    const text = idea.text || ''
+    const text = idea.content || ''
     const summary = idea.summary || ''
     
     if (viewState.isHovered && text.length > summary.length) {
@@ -77,7 +77,7 @@ export default function Idea({
     }
     
     return { width: baseWidth, height: baseHeight }
-  }, [viewState.isHovered, idea.width, idea.height, idea.text, idea.summary])
+  }, [viewState.isHovered, idea.width, idea.height, idea.content, idea.summary])
 
   // Get colors based on idea state and selection
   const getColors = useCallback(() => {
@@ -155,19 +155,19 @@ export default function Idea({
         const selectedIdea = ideas[id]
         if (selectedIdea) {
           dragStartPositions.current.set(id, {
-            x: selectedIdea.position_x || 0,
-            y: selectedIdea.position_y || 0
+            x: selectedIdea.x || 0,
+            y: selectedIdea.y || 0
           })
         }
       })
     } else {
       // Only this idea is being dragged
       dragStartPositions.current.set(idea.id, {
-        x: idea.position_x || 0,
-        y: idea.position_y || 0
+        x: idea.x || 0,
+        y: idea.y || 0
       })
     }
-  }, [isMultiSelected, selectedIdeaIds, ideas, idea.id, idea.position_x, idea.position_y])
+  }, [isMultiSelected, selectedIdeaIds, ideas, idea.id, idea.x, idea.y])
 
   const handleDragMove = useCallback((e: any) => {
     if (!isMultiSelected || selectedIdeaIds.size === 0) return
@@ -232,8 +232,8 @@ export default function Idea({
   return (
     <Group
       ref={groupRef}
-      x={idea.position_x || 0}
-      y={idea.position_y || 0}
+      x={idea.x || 0}
+      y={idea.y || 0}
       draggable={true}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}

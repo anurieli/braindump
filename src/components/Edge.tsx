@@ -79,7 +79,7 @@ export default function Edge({
         lineCap="round"
         lineJoin="round"
         tension={0}
-        dash={edge.type === 'tentative' ? [5, 5] : undefined}
+        dash={edge.relationshipType === 'tentative' ? [5, 5] : undefined}
         opacity={isHovered || isSelected ? 1 : 0.7}
       />
 

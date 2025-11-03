@@ -1,122 +1,124 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import dynamic from 'next/dynamic'
+import { useRouter } from 'next/navigation'
 import { useStore } from '@/store'
+import { getCurrentSession } from '@/lib/auth-helpers'
+import Canvas from '@/components/Canvas'
 import CanvasHeader from '@/components/CanvasHeader'
-import { QuickInput } from '@/components/QuickInput'
-import ThemeProvider from '@/components/ThemeProvider'
+import EmptyState from '@/components/EmptyState'
+import InputBox from '@/components/InputBox'
 import SidePanel from '@/components/SidePanel'
-import KeyboardShortcutsModal from '@/components/KeyboardShortcutsModal'
-import SettingsModal from '@/components/SettingsModal'
-
-// Dynamically import Canvas to avoid SSR issues with Konva
-const Canvas = dynamic(() => import('@/components/Canvas'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-screen flex items-center justify-center bg-white dark:bg-gray-900">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500 mx-auto mb-4"></div>
-        <p className="text-gray-600 dark:text-gray-400">Loading Canvas...</p>
-      </div>
-    </div>
-  )
-})
+import Toolbar from '@/components/Toolbar'
 
 export default function Home() {
-  const [dimensions, setDimensions] = useState({ width: 1920, height: 1080 })
-  const [isInitialized, setIsInitialized] = useState(false)
+  const router = useRouter()
+  const [isLoading, setIsLoading] = useState(true)
   
-  // Store selectors
+  const brainDumps = useStore(state => state.brainDumps)
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
   const loadBrainDumps = useStore(state => state.loadBrainDumps)
-  const createBrainDump = useStore(state => state.createBrainDump)
   const loadIdeas = useStore(state => state.loadIdeas)
-  const isSidebarOpen = useStore(state => state.isSidebarOpen)
+  const loadEdges = useStore(state => state.loadEdges)
+  const loadEdgeTypes = useStore(state => state.loadEdgeTypes)
+  const switchBrainDump = useStore(state => state.switchBrainDump)
 
-  useEffect(() => {
-    const updateDimensions = () => {
-      // Adjust canvas width based on sidebar state
-      const sidebarWidth = isSidebarOpen ? 256 : 64 // 256px expanded, 64px collapsed
-      setDimensions({
-        width: window.innerWidth - sidebarWidth,
-        height: window.innerHeight
-      })
-    }
-
-    updateDimensions()
-    window.addEventListener('resize', updateDimensions)
-    return () => window.removeEventListener('resize', updateDimensions)
-  }, [isSidebarOpen])
-
-  // Initialize app with brain dump
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Load existing brain dumps (this will auto-select the first one if available)
+        // Check authentication
+        const { user, token } = await getCurrentSession()
+        
+        if (!user || !token) {
+          router.push('/login')
+          return
+        }
+        
+        // Load brain dumps from database
         await loadBrainDumps()
         
-        // Wait a moment for state to update
-        setTimeout(async () => {
-          const currentId = useStore.getState().currentBrainDumpId
-          
-          // Only create a new brain dump if none exist at all
-          if (!currentId) {
-            await createBrainDump('Test Brain Dump')
-          }
-          
-          setIsInitialized(true)
-        }, 100)
+        // Load edge types
+        await loadEdgeTypes()
+
+        setIsLoading(false)
       } catch (error) {
         console.error('Failed to initialize app:', error)
-        setIsInitialized(true) // Show canvas anyway
+        router.push('/login')
       }
     }
     
     initializeApp()
-  }, [loadBrainDumps, createBrainDump]) // Include dependencies for ESLint compliance
+  }, [router, loadBrainDumps, loadEdgeTypes])
 
-  // Load ideas when brain dump changes
+  // Separate effect to handle brain dump selection after loading
   useEffect(() => {
-    if (currentBrainDumpId) {
-      loadIdeas(currentBrainDumpId)
-    }
-  }, [currentBrainDumpId, loadIdeas])
+    const handleBrainDumpSelection = async () => {
+      if (isLoading) return // Don't run while still loading
 
-  // Show loading until initialized
-  if (!isInitialized) {
+      if (brainDumps.length === 0) {
+        return
+      }
+
+      const hasCurrent = currentBrainDumpId
+        ? brainDumps.some(brainDump => brainDump.id === currentBrainDumpId)
+        : false
+
+      if (!currentBrainDumpId || !hasCurrent) {
+        await switchBrainDump(brainDumps[0].id)
+      }
+    }
+    
+    handleBrainDumpSelection()
+  }, [brainDumps, currentBrainDumpId, isLoading, switchBrainDump])
+
+  // Effect to load ideas and edges when brain dump changes
+  useEffect(() => {
+    const loadBrainDumpData = async () => {
+      if (currentBrainDumpId && !isLoading) {
+        await loadIdeas(currentBrainDumpId)
+        await loadEdges(currentBrainDumpId)
+      }
+    }
+    
+    loadBrainDumpData()
+  }, [currentBrainDumpId, isLoading, loadEdges, loadIdeas])
+
+  if (isLoading) {
     return (
-      <div className="w-full h-screen flex items-center justify-center bg-white dark:bg-gray-900">
+      <div className="w-full h-screen flex items-center justify-center bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Initializing Brain Dump...</p>
+          <div className="animate-spin rounded-full h-32 w-32 border-b-4 border-white mx-auto mb-4"></div>
+          <p className="text-white text-lg">Loading your brain dumps...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <ThemeProvider>
-      <div className="w-full h-screen overflow-hidden bg-white dark:bg-gray-900 flex">
-        {/* Side Panel for Brain Dump Management */}
-        <SidePanel />
-        
-        {/* Main Content Area */}
-        <div className="flex-1 h-full relative overflow-hidden">
-          {/* Main Canvas Area */}
-          <Canvas width={dimensions.width} height={dimensions.height} />
-          
-          {/* Canvas Header with brain dump name and idea count */}
-          <CanvasHeader />
-          
-          {/* Quick Input for creating ideas */}
-          <QuickInput />
-        </div>
-        
-        {/* Modals */}
-        <KeyboardShortcutsModal />
-        <SettingsModal />
+    <div className="w-full h-screen overflow-hidden flex">
+      {/* Side Panel for Brain Dump Management */}
+      <SidePanel />
+      
+      {/* Main Content Area */}
+      <div className="flex-1 h-full relative overflow-hidden">
+        {/* Main Canvas */}
+        <Canvas />
+
+        {/* Canvas Header */}
+        <CanvasHeader />
+
+        {brainDumps.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <>
+            {/* Input Box */}
+            <InputBox />
+
+            {/* Toolbar */}
+            <Toolbar />
+          </>
+        )}
       </div>
-    </ThemeProvider>
+    </div>
   )
 }

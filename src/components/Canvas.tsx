@@ -1,513 +1,385 @@
 'use client'
 
-import { useEffect, useRef, useCallback, useMemo, useState } from 'react'
-import { Stage, Layer, Rect } from 'react-konva'
-import Konva from 'konva'
-import { useStore } from '@/store'
-import { debounce } from '@/lib/debounce'
-import Grid from './Grid'
-import Idea from './Idea'
+import { useRef, useEffect, useCallback, useMemo } from 'react';
+import type { CSSProperties } from 'react';
+import { useStore } from '@/store';
+import { getThemeBackground } from '@/lib/themes';
+import { screenToCanvas, rectsIntersect, lineIntersectsRect } from '@/lib/geometry';
+import IdeaNode from './IdeaNode';
+import EdgeRenderer from './EdgeRenderer';
+import ConnectionLine from './ConnectionLine';
+import DetailModal from './DetailModal';
+import BatchActions from './BatchActions';
 
-interface CanvasProps {
-  width?: number
-  height?: number
-}
-
-export default function Canvas({ width = 1920, height = 1080 }: CanvasProps) {
-  const stageRef = useRef<Konva.Stage>(null)
+export default function Canvas() {
+  const canvasRef = useRef<HTMLDivElement>(null);
   
-  // Store selectors
-  const viewport = useStore(state => state.viewport)
-  const updateViewport = useStore(state => state.updateViewport)
-  const saveViewport = useStore(state => state.saveViewport)
-  const isPanning = useStore(state => state.isPanning)
-  const setPanning = useStore(state => state.setPanning)
-  const isGridVisible = useStore(state => state.isGridVisible)
-  const enableAnimations = useStore(state => state.enableAnimations)
-  // Get ideas from store 
-  const ideas = useStore(state => state.ideas)
-  const allIdeas = useMemo(() => Object.values(ideas), [ideas])
+  // Use stable selectors to avoid infinite loops
+  const currentBrainDumpId = useStore(state => state.currentBrainDumpId);
+  const brainDumps = useStore(state => state.brainDumps);
+  const currentBrainDump = useMemo(() => {
+    return brainDumps.find(bd => bd.id === currentBrainDumpId) || null;
+  }, [brainDumps, currentBrainDumpId]);
   
-  // Selection-related store actions
-  const addToSelection = useStore(state => state.addToSelection)
-  const clearSelection = useStore(state => state.clearSelection)
+  const viewport = useStore(state => state.viewport);
+  // Use theme from current brain dump if available, otherwise use global theme
+  const globalTheme = useStore(state => state.theme);
+  const theme = useMemo(() => {
+    // Use brain dump's theme if available (brain dumps from DB have theme field)
+    // Type assertion needed because BrainDump type doesn't include theme, but BrainDumpDB does
+    const brainDumpTheme = (currentBrainDump as any)?.theme;
+    return brainDumpTheme || globalTheme;
+  }, [globalTheme, currentBrainDump]);
+  const isGridVisible = useStore(state => state.isGridVisible);
+  const selectionBox = useStore(state => state.selectionBox);
+  const isPanning = useStore(state => state.isPanning);
+  const isSelecting = useStore(state => state.isSelecting);
+  const selectedIdeaIds = useStore(state => state.selectedIdeaIds);
   
-  // Local state for selection rectangle
-  const [selectionBox, setSelectionBox] = useState<{
-    x: number
-    y: number
-    width: number
-    height: number
-    visible: boolean
-  } | null>(null)
+  const updateViewport = useStore(state => state.updateViewport);
+  const setSelecting = useStore(state => state.setSelecting);
+  const setSelectionBox = useStore(state => state.setSelectionBox);
+  const clearSelection = useStore(state => state.clearSelection);
+  const setPanning = useStore(state => state.setPanning);
+  const toggleSidebar = useStore(state => state.toggleSidebar);
+  const setSelection = useStore(state => state.setSelection);
+  const setEdgeSelection = useStore(state => state.setEdgeSelection);
+  const edges = useStore(state => state.edges);
   
-  // Calculate visible ideas with useMemo to prevent infinite loops
-  const visibleIdeas = useMemo(() => {
-    const buffer = 500 // Render ideas 500px outside viewport for smooth scrolling
-    const { x, y, zoom } = viewport
-    
-    // Convert screen viewport to world coordinates
-    // In Konva, negative stage position means we've moved right/down in world space
-    const worldLeft = (-x - buffer) / zoom
-    const worldTop = (-y - buffer) / zoom
-    const worldRight = (-x + width + buffer) / zoom
-    const worldBottom = (-y + height + buffer) / zoom
+  // Directly access ideas object and memoize to avoid infinite loop
+  // Filter ideas by current brain dump ID
+  const ideasObject = useStore(state => state.ideas);
+  const ideas = useMemo(() => {
+    if (!currentBrainDumpId) return [];
+    return Object.values(ideasObject).filter(
+      idea => idea.brain_dump_id === currentBrainDumpId
+    );
+  }, [ideasObject, currentBrainDumpId]);
+  
+  const isPanningRef = useRef(false);
+  const lastMousePosRef = useRef({ x: 0, y: 0 });
+  const isBoxSelectingRef = useRef(false);
+  const spacePressedRef = useRef(false);
 
-    return allIdeas.filter(idea => {
-      const ideaRight = idea.position_x + (idea.width || 200)
-      const ideaBottom = idea.position_y + (idea.height || 100)
+  const baseGridSize = 40;
+  const scaledGridSize = baseGridSize * viewport.zoom;
 
-      const isVisible = !(
-        idea.position_x > worldRight ||
-        ideaRight < worldLeft ||
-        idea.position_y > worldBottom ||
-        ideaBottom < worldTop
-      )
+  const gridStyle: CSSProperties = {
+    backgroundSize: `${scaledGridSize}px ${scaledGridSize}px, ${scaledGridSize}px ${scaledGridSize}px`,
+    backgroundPosition: `${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px`,
+  };
 
-      return isVisible
-    })
-  }, [allIdeas, viewport, width, height])
-
-  // Debounced viewport save function
-  const debouncedSaveViewport = useCallback(() => {
-    const debouncedFn = debounce(saveViewport, 5000)
-    debouncedFn()
-  }, [saveViewport])
-
-  // Initialize stage position and scale from store
-  useEffect(() => {
-    const stage = stageRef.current
-    if (!stage) return
-
-    // Only update if there's a meaningful difference
-    const currentPos = stage.position()
-    const currentScale = stage.scaleX()
-    
-    const positionChanged = Math.abs(currentPos.x - viewport.x) > 0.1 || Math.abs(currentPos.y - viewport.y) > 0.1
-    const scaleChanged = Math.abs(currentScale - viewport.zoom) > 0.001
-    
-    if (positionChanged) {
-      stage.position({ x: viewport.x, y: viewport.y })
-    }
-    if (scaleChanged) {
-      stage.scale({ x: viewport.zoom, y: viewport.zoom })
-    }
-  }, [viewport])
-
-  // Handle click on empty space to clear selections
-  const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
-    // Only handle clicks on empty space (not on ideas or other elements)
-    if (e.target !== e.target.getStage()) return
-    
-    // Clear selections when clicking on empty space (if not dragging)
-    if (!selectionBox) {
-      clearSelection()
-    }
-  }, [clearSelection, selectionBox])
-
-  // Handle pan functionality (Cmd + drag) and selection rectangle
-  const handleMouseDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
-    const isCtrlPressed = e.evt.ctrlKey || e.evt.metaKey
-    const stage = e.target.getStage()
-    if (!stage) return
-    
-    // Handle panning (Cmd/Ctrl + drag)
-    if (isCtrlPressed) {
-      e.evt.preventDefault()
-      setPanning(true)
-      stage.container().style.cursor = 'grabbing'
-      stage.startDrag()
-      return
-    }
-    
-    // Handle selection rectangle (drag on empty stage)
-    if (e.target === stage) {
-      const pointer = stage.getPointerPosition()
-      if (!pointer) return
-      
-      // Convert screen coordinates to world coordinates
-      const { x: stageX, y: stageY } = stage.position()
-      const zoom = stage.scaleX()
-      const worldX = (pointer.x - stageX) / zoom
-      const worldY = (pointer.y - stageY) / zoom
-      
-      setSelectionBox({
-        x: worldX,
-        y: worldY,
-        width: 0,
-        height: 0,
-        visible: true
-      })
-    }
-  }, [setPanning])
-
-  // Handle mouse move for selection rectangle
-  const handleMouseMove = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
-    if (!selectionBox || !selectionBox.visible) return
-    
-    const stage = e.target.getStage()
-    if (!stage) return
-    
-    const pointer = stage.getPointerPosition()
-    if (!pointer) return
-    
-    // Convert screen coordinates to world coordinates
-    const { x: stageX, y: stageY } = stage.position()
-    const zoom = stage.scaleX()
-    const worldX = (pointer.x - stageX) / zoom
-    const worldY = (pointer.y - stageY) / zoom
-    
-    // Update selection box dimensions
-    setSelectionBox({
-      ...selectionBox,
-      width: worldX - selectionBox.x,
-      height: worldY - selectionBox.y,
-      visible: true
-    })
-  }, [selectionBox])
-
-  const handleMouseUp = useCallback(() => {
-    // Handle panning end
-    if (isPanning) {
-      setPanning(false)
-      const stage = stageRef.current
-      if (stage) {
-        stage.container().style.cursor = 'default'
-        
-        // Update viewport in store
-        const pos = stage.position()
-        const scale = stage.scale()
-        updateViewport({
-          x: pos.x,
-          y: pos.y,
-          zoom: scale?.x || 1
-        })
-
-        // Trigger debounced save
-        debouncedSaveViewport()
-      }
-      return
-    }
-    
-    // Handle selection rectangle end
-    if (selectionBox && selectionBox.visible) {
-      const stage = stageRef.current
-      if (!stage) return
-      
-      // Calculate the normalized selection box (handle negative width/height)
-      const box = {
-        x: selectionBox.width >= 0 ? selectionBox.x : selectionBox.x + selectionBox.width,
-        y: selectionBox.height >= 0 ? selectionBox.y : selectionBox.y + selectionBox.height,
-        width: Math.abs(selectionBox.width),
-        height: Math.abs(selectionBox.height)
-      }
-      
-      // Find ideas that intersect with the selection box
-      const selectedIds: string[] = []
-      allIdeas.forEach(idea => {
-        const ideaBox = {
-          x: idea.position_x,
-          y: idea.position_y,
-          width: idea.width || 200,
-          height: idea.height || 100
-        }
-        
-        // Check if boxes intersect using Konva utility
-        if (Konva.Util.haveIntersection(box, ideaBox)) {
-          selectedIds.push(idea.id)
-        }
-      })
-      
-      // Update selection in store
-      if (selectedIds.length > 0) {
-        addToSelection(selectedIds)
-      }
-      
-      // Clear selection box
-      setSelectionBox(null)
-    }
-  }, [isPanning, setPanning, updateViewport, debouncedSaveViewport, selectionBox, allIdeas, addToSelection])
-
-  const handleDragEnd = useCallback(() => {
-    const stage = stageRef.current
-    if (!stage) return
-
-    const pos = stage.position()
-    const scale = stage.scale()
-    
-    updateViewport({
-      x: pos.x,
-      y: pos.y,
-      zoom: scale?.x || 1
-    })
-
-    debouncedSaveViewport()
-  }, [updateViewport, debouncedSaveViewport])
-
-  // Handle zoom functionality (Cmd/Ctrl + scroll)
-  const handleWheel = useCallback((e: Konva.KonvaEventObject<WheelEvent>) => {
-    e.evt.preventDefault()
-    
-    const isCtrlPressed = e.evt.ctrlKey || e.evt.metaKey
-    if (!isCtrlPressed) return
-
-    const stage = stageRef.current
-    if (!stage) return
-
-    const oldScale = stage.scaleX()
-    const pointer = stage.getPointerPosition()
-    if (!pointer) return
-
-    // Calculate zoom factor
-    const scaleBy = 1.05
-    const direction = e.evt.deltaY > 0 ? -1 : 1
-    const newScale = Math.max(0.1, Math.min(5, oldScale * Math.pow(scaleBy, direction)))
-
-    // Calculate new position to zoom towards mouse pointer
-    const mousePointTo = {
-      x: (pointer.x - stage.x()) / oldScale,
-      y: (pointer.y - stage.y()) / oldScale
-    }
-
-    const newPos = {
-      x: pointer.x - mousePointTo.x * newScale,
-      y: pointer.y - mousePointTo.y * newScale
-    }
-
-    // Apply animation if enabled
-    if (enableAnimations) {
-      const tween = new Konva.Tween({
-        node: stage,
-        duration: 0.1,
-        scaleX: newScale,
-        scaleY: newScale,
-        x: newPos.x,
-        y: newPos.y,
-        easing: Konva.Easings.EaseOut,
-        onFinish: () => {
-          updateViewport({
-            x: newPos.x,
-            y: newPos.y,
-            zoom: newScale
-          })
-          debouncedSaveViewport()
-        }
-      })
-      tween.play()
-    } else {
-      stage.scale({ x: newScale, y: newScale })
-      stage.position(newPos)
-      updateViewport({
-        x: newPos.x,
-        y: newPos.y,
-        zoom: newScale
-      })
-      debouncedSaveViewport()
-    }
-  }, [updateViewport, debouncedSaveViewport, enableAnimations])
-
-  // Get additional store actions for keyboard shortcuts
-  const toggleTheme = useStore(state => state.toggleTheme)
-  const toggleGrid = useStore(state => state.toggleGrid)
-  const toggleSidebar = useStore(state => state.toggleSidebar)
-  const createBrainDump = useStore(state => state.createBrainDump)
-  const getCurrentBrainDump = useStore(state => state.getCurrentBrainDump)
-  const deleteIdea = useStore(state => state.deleteIdea)
-
-  // Keyboard shortcuts handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in an input field
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return
-      }
-
-      // Delete or Backspace to delete selected ideas
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIdeaIds.size > 0) {
-        e.preventDefault()
-        const selectedCount = selectedIdeaIds.size
-        const confirmed = window.confirm(
-          `Are you sure you want to delete ${selectedCount} idea${selectedCount > 1 ? 's' : ''}? This action cannot be undone.`
-        )
-        
-        if (confirmed) {
-          const deletePromises = Array.from(selectedIdeaIds).map(id => deleteIdea(id))
-          Promise.all(deletePromises)
-            .then(() => {
-              clearSelection()
-              console.log(`🗑️ Deleted ${selectedCount} idea(s) via keyboard shortcut`)
-            })
-            .catch(error => {
-              console.error('Failed to delete ideas:', error)
-              alert('Failed to delete some ideas. Please try again.')
-            })
+      if (e.code === 'Space') {
+        const target = e.target as HTMLElement | null;
+        const isInputElement = target && (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.getAttribute('contenteditable') === 'true'
+        );
+        if (!isInputElement) {
+          spacePressedRef.current = true;
+          e.preventDefault();
         }
-        return
       }
+    };
 
-      // Ctrl+Shift+T or Cmd+Shift+T to toggle theme
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 't') {
-        e.preventDefault()
-        toggleTheme()
-        console.log('🎨 Theme toggled via keyboard shortcut')
-        return
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        spacePressedRef.current = false;
       }
+    };
 
-      // Ctrl+G or Cmd+G to toggle grid
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
-        e.preventDefault()
-        toggleGrid()
-        console.log('📊 Grid toggled via keyboard shortcut')
-        return
+    window.addEventListener('keydown', handleKeyDown, { passive: false });
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  // Handle mouse down
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!currentBrainDump) return;
+
+    const shouldPan =
+      e.button === 1 ||
+      (e.button === 0 && (e.altKey || e.metaKey || spacePressedRef.current));
+
+    if (shouldPan) {
+      // Middle mouse, Alt+Left mouse, or Space+Left mouse = pan
+      isPanningRef.current = true;
+      setPanning(true);
+      lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+      e.preventDefault();
+      return;
+    }
+
+    if (e.button === 0) {
+      // Left mouse on canvas = box selection
+      const rect = canvasRef.current!.getBoundingClientRect();
+      const canvasPoint = screenToCanvas(
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+        viewport.x,
+        viewport.y,
+        viewport.zoom
+      );
+      isBoxSelectingRef.current = true;
+      setSelecting(true);
+      setSelectionBox({
+        startX: canvasPoint.x,
+        startY: canvasPoint.y,
+        endX: canvasPoint.x,
+        endY: canvasPoint.y,
+      });
+      if (!e.shiftKey && !e.metaKey) {
+        clearSelection();
       }
+    }
+  }, [viewport, currentBrainDump, setPanning, setSelecting, setSelectionBox, clearSelection]);
 
-      // Ctrl+/ or Cmd+/ to toggle sidebar
-      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
-        e.preventDefault()
-        toggleSidebar()
-        console.log('🗂️ Sidebar toggled via keyboard shortcut')
-        return
-      }
+  // Handle mouse move
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!currentBrainDump) return;
 
-      // Ctrl+N or Cmd+N to create new brain dump
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
-        e.preventDefault()
-        const newName = `Brain Dump ${new Date().toLocaleDateString()}`
-        createBrainDump(newName)
-        console.log('🧠 New brain dump created via keyboard shortcut')
-        return
-      }
+    if (isPanningRef.current) {
+      const dx = e.clientX - lastMousePosRef.current.x;
+      const dy = e.clientY - lastMousePosRef.current.y;
+      updateViewport({
+        x: viewport.x + dx,
+        y: viewport.y + dy,
+        zoom: viewport.zoom
+      });
+      lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+    } else if (isBoxSelectingRef.current && canvasRef.current && selectionBox) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const canvasPoint = screenToCanvas(
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+        viewport.x,
+        viewport.y,
+        viewport.zoom
+      );
+      const updatedBox = {
+        ...selectionBox,
+        endX: canvasPoint.x,
+        endY: canvasPoint.y,
+      };
+      setSelectionBox(updatedBox);
 
-      // Ctrl+D or Cmd+D to duplicate current brain dump
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
-        e.preventDefault()
-        const currentBrainDump = getCurrentBrainDump()
-        if (currentBrainDump) {
-          const duplicateName = `${currentBrainDump.name} (Copy)`
-          createBrainDump(duplicateName)
-          console.log('📋 Brain dump duplicated via keyboard shortcut')
+      // Real-time selection: check which nodes and edges intersect with selection box
+      const selectionRect = {
+        x: Math.min(updatedBox.startX, updatedBox.endX),
+        y: Math.min(updatedBox.startY, updatedBox.endY),
+        width: Math.abs(updatedBox.endX - updatedBox.startX),
+        height: Math.abs(updatedBox.endY - updatedBox.startY),
+      };
+
+      // Select nodes that intersect with selection box
+      // Note: nodes are centered at their position (transform: translate(-50%, -50%))
+      const selectedNodeIds: string[] = [];
+      ideas.forEach(idea => {
+        const nodeWidth = idea.width || 200;
+        const nodeHeight = idea.height || 100;
+        const ideaRect = {
+          x: idea.position_x - nodeWidth / 2,
+          y: idea.position_y - nodeHeight / 2,
+          width: nodeWidth,
+          height: nodeHeight,
+        };
+        if (rectsIntersect(selectionRect, ideaRect)) {
+          selectedNodeIds.push(idea.id);
         }
-        return
-      }
+      });
 
-      // Ctrl+0 or Cmd+0 to reset view
-      if ((e.ctrlKey || e.metaKey) && e.key === '0') {
-        e.preventDefault()
+      // Select edges that intersect with selection box
+      const selectedEdgeIds: string[] = [];
+      const filteredEdges = Object.values(edges).filter(
+        edge => edge.brain_dump_id === currentBrainDumpId
+      );
+      filteredEdges.forEach(edge => {
+        const sourceIdea = ideas.find(i => i.id === edge.parent_id);
+        const targetIdea = ideas.find(i => i.id === edge.child_id);
         
-        const stage = stageRef.current
-        if (!stage) return
+        if (sourceIdea && targetIdea) {
+          const sourceX = sourceIdea.position_x + (sourceIdea.width || 200) / 2;
+          const sourceY = sourceIdea.position_y + (sourceIdea.height || 100) / 2;
+          const targetX = targetIdea.position_x + (targetIdea.width || 200) / 2;
+          const targetY = targetIdea.position_y + (targetIdea.height || 100) / 2;
 
-        const resetPos = { x: 0, y: 0 }
-        const resetScale = 1
+          if (lineIntersectsRect(
+            sourceX,
+            sourceY,
+            targetX,
+            targetY,
+            selectionRect.x,
+            selectionRect.y,
+            selectionRect.width,
+            selectionRect.height
+          )) {
+            selectedEdgeIds.push(edge.id);
+          }
+        }
+      });
 
-        if (enableAnimations) {
-          const tween = new Konva.Tween({
-            node: stage,
-            duration: 0.3,
-            scaleX: resetScale,
-            scaleY: resetScale,
-            x: resetPos.x,
-            y: resetPos.y,
-            easing: Konva.Easings.EaseInOut,
-            onFinish: () => {
-              updateViewport({
-                x: resetPos.x,
-                y: resetPos.y,
-                zoom: resetScale
-              })
-              debouncedSaveViewport()
-            }
-          })
-          tween.play()
+      // Update selections in real-time
+      setSelection(selectedNodeIds);
+      setEdgeSelection(selectedEdgeIds);
+    }
+  }, [viewport, updateViewport, selectionBox, setSelectionBox, currentBrainDump, currentBrainDumpId, ideas, edges, setSelection, setEdgeSelection]);
+
+  // Handle mouse up
+  const handleMouseUp = useCallback(() => {
+    if (isPanningRef.current) {
+      isPanningRef.current = false;
+      setPanning(false);
+    }
+    if (isBoxSelectingRef.current) {
+      isBoxSelectingRef.current = false;
+      setSelecting(false);
+      setSelectionBox(null);
+    }
+  }, [setPanning, setSelecting, setSelectionBox]);
+
+  // Handle click on empty canvas space
+  const handleCanvasClick = useCallback((e: React.MouseEvent) => {
+    // Only toggle if clicking directly on the canvas (empty space)
+    if (e.target === canvasRef.current && !isPanningRef.current && !isBoxSelectingRef.current && currentBrainDump) {
+      toggleSidebar();
+    }
+  }, [toggleSidebar, currentBrainDump]);
+
+  // Handle wheel (zoom)
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (!currentBrainDump) return;
+
+    e.preventDefault();
+    
+    const delta = -e.deltaY * 0.001;
+    const newZoom = Math.max(0.1, Math.min(3, viewport.zoom + delta));
+    
+    // Zoom towards mouse position
+    if (canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      // Calculate the point in canvas coordinates before zoom
+      const canvasPointBefore = screenToCanvas(mouseX, mouseY, viewport.x, viewport.y, viewport.zoom);
+      
+      // Calculate the point in canvas coordinates after zoom
+      const canvasPointAfter = screenToCanvas(mouseX, mouseY, viewport.x, viewport.y, newZoom);
+      
+      // Adjust pan to keep the point under the mouse
+      const dx = (canvasPointAfter.x - canvasPointBefore.x) * newZoom;
+      const dy = (canvasPointAfter.y - canvasPointBefore.y) * newZoom;
+      
+      updateViewport({
+        x: viewport.x + dx,
+        y: viewport.y + dy,
+        zoom: newZoom
+      });
+    }
+  }, [viewport, updateViewport, currentBrainDump]);
+
+  // Connection handling - add global mouse up
+  const isCreatingConnection = useStore(state => state.isCreatingConnection);
+  const cancelConnection = useStore(state => state.cancelConnection);
+  
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (isCreatingConnection) {
+        cancelConnection();
+      }
+    };
+    
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, [isCreatingConnection, cancelConnection]);
+
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape - clear selection or cancel connection
+      if (e.key === 'Escape') {
+        if (isCreatingConnection) {
+          cancelConnection();
         } else {
-          stage.scale({ x: resetScale, y: resetScale })
-          stage.position(resetPos)
-          updateViewport({
-            x: resetPos.x,
-            y: resetPos.y,
-            zoom: resetScale
-          })
-          debouncedSaveViewport()
+          clearSelection();
         }
       }
-    }
+      
+      // Delete/Backspace - delete selected ideas
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const selectedIds = Array.from(selectedIdeaIds);
+        if (selectedIds.length > 0) {
+          const deleteIdea = useStore.getState().deleteIdea;
+          selectedIds.forEach(id => deleteIdea(id));
+          clearSelection();
+        }
+      }
+    };
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [updateViewport, debouncedSaveViewport, enableAnimations, toggleTheme, toggleGrid, toggleSidebar, createBrainDump, getCurrentBrainDump, selectedIdeaIds, deleteIdea, clearSelection])
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIdeaIds, clearSelection, isCreatingConnection, cancelConnection]);
 
-  // Update cursor based on panning state
-  useEffect(() => {
-    const stage = stageRef.current
-    if (!stage) return
-
-    const container = stage.container()
-    container.style.cursor = isPanning ? 'grabbing' : 'default'
-  }, [isPanning])
-
-  // Force layer redraw when ideas change
-  useEffect(() => {
-    const stage = stageRef.current
-    if (!stage) return
-
-    // Force redraw of the main content layer specifically
-    const layers = stage.getLayers()
-    if (layers.length > 1) {
-      layers[1].batchDraw() // Main content layer (index 1)
-    }
-  }, [visibleIdeas.length])
+  const themeBackground = getThemeBackground(theme);
+  const hasActiveBrainDump = Boolean(currentBrainDump);
 
   return (
-    <div className="canvas-container w-full h-full overflow-hidden">
-      <Stage
-        ref={stageRef}
-        width={width}
-        height={height}
-        draggable={true}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onClick={handleStageClick}
-        onDragEnd={handleDragEnd}
-        onWheel={handleWheel}
-        className="bg-white dark:bg-gray-900"
+    <div
+      ref={canvasRef}
+      className="relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing"
+      style={themeBackground}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      onWheel={handleWheel}
+      onClick={handleCanvasClick}
+    >
+      {/* Grid Overlay */}
+      {isGridVisible && <div className="grid-overlay" style={gridStyle} />}
+      
+      {/* Transform Container */}
+      <div
+        className="absolute inset-0"
+        style={{
+          transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+          transformOrigin: '0 0',
+        }}
       >
-        <Layer>
-          <Grid 
-            viewport={viewport}
-            stageWidth={width}
-            stageHeight={height}
-            visible={isGridVisible}
-          />
-        </Layer>
-        <Layer>
-          {/* Main content layer - ideas will be rendered here */}
-          {/* Viewport culling: Only rendering {visibleIdeas.length} visible ideas */}
-          {visibleIdeas.map((idea) => {
-            return (
-              <Idea 
-                key={idea.id} 
-                idea={idea} 
-              />
-            )
-          })}
-        </Layer>
-        <Layer>
-          {/* Selection rectangle */}
-          {selectionBox && selectionBox.visible && (
-            <Rect
-              x={selectionBox.width >= 0 ? selectionBox.x : selectionBox.x + selectionBox.width}
-              y={selectionBox.height >= 0 ? selectionBox.y : selectionBox.y + selectionBox.height}
-              width={Math.abs(selectionBox.width)}
-              height={Math.abs(selectionBox.height)}
-              stroke="#007AFF"
-              strokeWidth={1}
-              dash={[4, 4]}
-              fill="rgba(0, 122, 255, 0.1)"
-            />
-          )}
-        </Layer>
-      </Stage>
+        {/* Ideas */}
+        {ideas.map(idea => (
+          <IdeaNode key={idea.id} idea={idea} />
+        ))}
+        
+        {/* Edges (SVG Layer) */}
+        {hasActiveBrainDump && <EdgeRenderer />}
+      </div>
+      
+      {/* Box Selection Overlay */}
+      {selectionBox && hasActiveBrainDump && (
+        <div
+          className="selection-box"
+          style={{
+            left: Math.min(selectionBox.startX, selectionBox.endX) * viewport.zoom + viewport.x,
+            top: Math.min(selectionBox.startY, selectionBox.endY) * viewport.zoom + viewport.y,
+            width: Math.abs(selectionBox.endX - selectionBox.startX) * viewport.zoom,
+            height: Math.abs(selectionBox.endY - selectionBox.startY) * viewport.zoom,
+          }}
+        />
+      )}
+      
+      {/* Batch Actions */}
+      {hasActiveBrainDump && <BatchActions />}
+      
+      {/* Detail Modal */}
+      <DetailModal />
     </div>
-  )
+  );
 }

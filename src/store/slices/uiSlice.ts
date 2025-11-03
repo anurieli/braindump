@@ -1,9 +1,9 @@
 import { StateCreator } from 'zustand'
-import { Theme, Modal } from '@/types'
+import { ThemeType, Modal } from '@/types'
 
 export interface UiSlice {
   // State
-  theme: Theme
+  theme: ThemeType
   isGridVisible: boolean
   activeModal: Modal
   isSidebarOpen: boolean
@@ -21,6 +21,13 @@ export interface UiSlice {
     endY: number
   } | null
   selectedIdeaIds: Set<string>
+  selectedEdgeIds: Set<string>
+  
+  // Connection state
+  isCreatingConnection: boolean
+  connectionSourceId: string | null
+  hoveredNodeId: string | null
+  touchedNodesInConnection: Set<string>
 
   // Performance settings
   enableAnimations: boolean
@@ -28,7 +35,7 @@ export interface UiSlice {
 
   // Actions
   toggleTheme: () => void
-  setTheme: (theme: Theme) => void
+  setTheme: (theme: ThemeType) => void
   toggleGrid: () => void
   setGridVisible: (visible: boolean) => void
   openModal: (modal: Modal) => void
@@ -46,9 +53,19 @@ export interface UiSlice {
   
   // Selection management actions
   setSelection: (ids: string[]) => void
+  setEdgeSelection: (ids: string[]) => void
   addToSelection: (ids: string[]) => void
+  addToEdgeSelection: (ids: string[]) => void
   removeFromSelection: (ids: string[]) => void
+  removeFromEdgeSelection: (ids: string[]) => void
   clearSelection: () => void
+  
+  // Connection actions
+  startConnection: (sourceId: string) => void
+  cancelConnection: () => void
+  setHoveredNodeId: (id: string | null) => void
+  addTouchedNodeInConnection: (id: string) => void
+  clearTouchedNodesInConnection: () => void
   
   // Keyboard shortcuts
   setShortcutPressed: (key: string, pressed: boolean) => void
@@ -64,8 +81,8 @@ export const createUiSlice: StateCreator<
   [],
   UiSlice
 > = (set) => ({
-  // Initial state - detect system preference
-  theme: typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+  // Initial state - default to light theme
+  theme: 'light',
   isGridVisible: true,
   activeModal: null,
   isSidebarOpen: true,
@@ -78,6 +95,13 @@ export const createUiSlice: StateCreator<
   isSelecting: false,
   selectionBox: null,
   selectedIdeaIds: new Set<string>(),
+  selectedEdgeIds: new Set<string>(),
+  
+  // Connection state
+  isCreatingConnection: false,
+  connectionSourceId: null,
+  hoveredNodeId: null,
+  touchedNodesInConnection: new Set<string>(),
 
   // Performance settings
   enableAnimations: true,
@@ -86,11 +110,11 @@ export const createUiSlice: StateCreator<
   // Actions
   toggleTheme: () => {
     set(state => ({
-      theme: state.theme === 'light' ? 'dark' : 'light'
+      theme: state.theme === 'light' ? 'dots-dark' : 'light'
     }))
   },
 
-  setTheme: (theme: Theme) => {
+  setTheme: (theme: ThemeType) => {
     set({ theme })
   },
 
@@ -154,11 +178,23 @@ export const createUiSlice: StateCreator<
     set({ selectedIdeaIds: new Set(ids) })
   },
 
+  setEdgeSelection: (ids: string[]) => {
+    set({ selectedEdgeIds: new Set(ids) })
+  },
+
   addToSelection: (ids: string[]) => {
     set(state => {
       const newSelection = new Set(state.selectedIdeaIds)
       ids.forEach(id => newSelection.add(id))
       return { selectedIdeaIds: newSelection }
+    })
+  },
+
+  addToEdgeSelection: (ids: string[]) => {
+    set(state => {
+      const newSelection = new Set(state.selectedEdgeIds)
+      ids.forEach(id => newSelection.add(id))
+      return { selectedEdgeIds: newSelection }
     })
   },
 
@@ -170,8 +206,50 @@ export const createUiSlice: StateCreator<
     })
   },
 
+  removeFromEdgeSelection: (ids: string[]) => {
+    set(state => {
+      const newSelection = new Set(state.selectedEdgeIds)
+      ids.forEach(id => newSelection.delete(id))
+      return { selectedEdgeIds: newSelection }
+    })
+  },
+
   clearSelection: () => {
-    set({ selectedIdeaIds: new Set<string>() })
+    set({ selectedIdeaIds: new Set<string>(), selectedEdgeIds: new Set<string>() })
+  },
+  
+  // Connection actions
+  startConnection: (sourceId: string) => {
+    set({
+      isCreatingConnection: true,
+      connectionSourceId: sourceId,
+      touchedNodesInConnection: new Set<string>(),
+    })
+  },
+  
+  cancelConnection: () => {
+    set({
+      isCreatingConnection: false,
+      connectionSourceId: null,
+      hoveredNodeId: null,
+      touchedNodesInConnection: new Set<string>(),
+    })
+  },
+  
+  setHoveredNodeId: (id: string | null) => {
+    set({ hoveredNodeId: id })
+  },
+  
+  addTouchedNodeInConnection: (id: string) => {
+    set(state => {
+      const newTouched = new Set(state.touchedNodesInConnection)
+      newTouched.add(id)
+      return { touchedNodesInConnection: newTouched }
+    })
+  },
+  
+  clearTouchedNodesInConnection: () => {
+    set({ touchedNodesInConnection: new Set<string>() })
   },
 
   // Keyboard shortcuts
