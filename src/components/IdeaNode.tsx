@@ -49,13 +49,15 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   
   // Handle edge creation/deletion when this node is hovered during connection
   useEffect(() => {
+    // Only process when hoveredNodeId changes (not when edges change)
+    // This prevents unwanted edge recreation after deletion
     if (isCreatingConnection && connectionSourceId && hoveredNodeId === idea.id && connectionSourceId !== idea.id) {
       // Skip if already touched - we only want to toggle once per drag session
       if (touchedNodesInConnection.has(idea.id)) {
         return;
       }
       
-      // Check if edge already exists
+      // Check if edge already exists at this moment
       const existingEdge = Object.values(edges).find(
         edge => edge.brain_dump_id === currentBrainDumpId && 
                 edge.parent_id === connectionSourceId && 
@@ -73,7 +75,9 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
       // Mark this node as touched so we don't toggle again during same drag
       addTouchedNodeInConnection(idea.id);
     }
-  }, [hoveredNodeId, isCreatingConnection, connectionSourceId, idea.id, touchedNodesInConnection, edges, currentBrainDumpId, addEdge, deleteEdge, addTouchedNodeInConnection]);
+    // IMPORTANT: Don't include 'edges' in dependencies to prevent recreation after deletion
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hoveredNodeId, isCreatingConnection, connectionSourceId, idea.id, touchedNodesInConnection, currentBrainDumpId]);
   
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     // Don't handle if clicking on the connection handle
