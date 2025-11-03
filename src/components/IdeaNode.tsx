@@ -66,12 +66,8 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         // Delete existing edge
         deleteEdge(existingEdge.id);
       } else {
-        // Create new edge (addEdge will handle the database call)
-        addEdge({
-          parent_id: connectionSourceId,
-          child_id: idea.id,
-          type: 'relates_to',
-        });
+        // Create new edge (addEdge expects: parentId, childId, type, note?)
+        addEdge(connectionSourceId, idea.id, 'related_to');
       }
       
       // Mark this node as touched so we don't toggle again during same drag
@@ -195,7 +191,15 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const handleConnectionHandleMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    startConnection(idea.id);
+    
+    // Get the actual screen position of the handle center
+    const target = e.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
+    const handleCenterX = rect.left + rect.width / 2;
+    const handleCenterY = rect.top + rect.height / 2;
+    
+    // Pass the actual screen position to startConnection
+    startConnection(idea.id, handleCenterX, handleCenterY);
   }, [idea.id, startConnection]);
   
   const handleMouseEnter = useCallback(() => {
@@ -227,6 +231,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         transform: 'translate(-50%, -50%)',
         pointerEvents: 'auto',
         cursor: isDragging ? 'grabbing' : isHovered ? 'grab' : 'pointer',
+        zIndex: 1,
       }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}

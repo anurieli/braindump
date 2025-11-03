@@ -252,8 +252,8 @@ export default function Canvas() {
     }
   }, [toggleSidebar, currentBrainDump]);
 
-  // Handle wheel (zoom)
-  const handleWheel = useCallback((e: React.WheelEvent) => {
+  // Handle wheel (zoom) - must use native event listener with passive: false
+  const handleWheel = useCallback((e: WheelEvent) => {
     if (!currentBrainDump) return;
 
     e.preventDefault();
@@ -285,6 +285,18 @@ export default function Canvas() {
     }
   }, [viewport, updateViewport, currentBrainDump]);
 
+  // Attach wheel event listener with passive: false to allow preventDefault
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('wheel', handleWheel);
+    };
+  }, [handleWheel]);
+
   // Connection handling - add global mouse up
   const isCreatingConnection = useStore(state => state.isCreatingConnection);
   const cancelConnection = useStore(state => state.cancelConnection);
@@ -303,6 +315,35 @@ export default function Canvas() {
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle shortcuts when typing in inputs/textareas
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // Command+Z (Mac) or Ctrl+Z (Windows/Linux) - Undo
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        // Import dynamically to avoid circular dependency
+        import('@/store').then(({ undo, canUndo }) => {
+          if (canUndo()) {
+            undo();
+          }
+        });
+        return;
+      }
+
+      // Command+Shift+Z (Mac) or Ctrl+Shift+Z (Windows/Linux) - Redo
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        // Import dynamically to avoid circular dependency
+        import('@/store').then(({ redo, canRedo }) => {
+          if (canRedo()) {
+            redo();
+          }
+        });
+        return;
+      }
+
       // Escape - clear selection or cancel connection
       if (e.key === 'Escape') {
         if (isCreatingConnection) {
@@ -339,7 +380,6 @@ export default function Canvas() {
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      onWheel={handleWheel}
       onClick={handleCanvasClick}
     >
       {/* Grid Overlay */}
@@ -353,13 +393,13 @@ export default function Canvas() {
           transformOrigin: '0 0',
         }}
       >
+        {/* Edges (SVG Layer) - MUST render BEFORE ideas so they appear behind */}
+        {hasActiveBrainDump && <EdgeRenderer />}
+        
         {/* Ideas */}
         {ideas.map(idea => (
           <IdeaNode key={idea.id} idea={idea} />
         ))}
-        
-        {/* Edges (SVG Layer) */}
-        {hasActiveBrainDump && <EdgeRenderer />}
       </div>
       
       {/* Box Selection Overlay */}
@@ -377,6 +417,9 @@ export default function Canvas() {
       
       {/* Batch Actions */}
       {hasActiveBrainDump && <BatchActions />}
+      
+      {/* Connection Line (overlay for edge creation) */}
+      {hasActiveBrainDump && <ConnectionLine />}
       
       {/* Detail Modal */}
       <DetailModal />

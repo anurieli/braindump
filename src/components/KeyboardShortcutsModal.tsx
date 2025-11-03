@@ -54,8 +54,8 @@ export default function KeyboardShortcutsModal() {
     {
       category: 'Editing',
       items: [
-        { key: 'Ctrl + Z', description: 'Undo last action' },
-        { key: 'Ctrl + Y', description: 'Redo last action' },
+        { key: '⌘Z / Ctrl+Z', description: 'Undo last action' },
+        { key: '⌘⇧Z / Ctrl+Shift+Z', description: 'Redo last action' },
         { key: 'Enter', description: 'Submit idea (in input box)' },
         { key: 'Shift + Enter', description: 'New line (in input box)' },
       ]

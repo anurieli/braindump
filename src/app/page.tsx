@@ -10,6 +10,9 @@ import EmptyState from '@/components/EmptyState'
 import InputBox from '@/components/InputBox'
 import SidePanel from '@/components/SidePanel'
 import Toolbar from '@/components/Toolbar'
+import ControlPanel from '@/components/ControlPanel'
+import KeyboardShortcutsModal from '@/components/KeyboardShortcutsModal'
+import SettingsModal from '@/components/SettingsModal'
 
 export default function Home() {
   const router = useRouter()
@@ -116,8 +119,17 @@ export default function Home() {
 
             {/* Toolbar */}
             <Toolbar />
+
+            {/* Control Panel with Undo/Redo */}
+            <div className="absolute top-6 right-[340px] z-50">
+              <ControlPanel />
+            </div>
           </>
         )}
+
+        {/* Modals */}
+        <KeyboardShortcutsModal />
+        <SettingsModal />
       </div>
     </div>
   )

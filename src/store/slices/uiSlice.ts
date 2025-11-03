@@ -26,6 +26,7 @@ export interface UiSlice {
   // Connection state
   isCreatingConnection: boolean
   connectionSourceId: string | null
+  connectionStartPosition: { x: number; y: number } | null
   hoveredNodeId: string | null
   touchedNodesInConnection: Set<string>
 
@@ -61,7 +62,7 @@ export interface UiSlice {
   clearSelection: () => void
   
   // Connection actions
-  startConnection: (sourceId: string) => void
+  startConnection: (sourceId: string, screenX: number, screenY: number) => void
   cancelConnection: () => void
   setHoveredNodeId: (id: string | null) => void
   addTouchedNodeInConnection: (id: string) => void
@@ -100,6 +101,7 @@ export const createUiSlice: StateCreator<
   // Connection state
   isCreatingConnection: false,
   connectionSourceId: null,
+  connectionStartPosition: null,
   hoveredNodeId: null,
   touchedNodesInConnection: new Set<string>(),
 
@@ -219,10 +221,11 @@ export const createUiSlice: StateCreator<
   },
   
   // Connection actions
-  startConnection: (sourceId: string) => {
+  startConnection: (sourceId: string, screenX: number, screenY: number) => {
     set({
       isCreatingConnection: true,
       connectionSourceId: sourceId,
+      connectionStartPosition: { x: screenX, y: screenY },
       touchedNodesInConnection: new Set<string>(),
     })
   },
@@ -231,6 +234,7 @@ export const createUiSlice: StateCreator<
     set({
       isCreatingConnection: false,
       connectionSourceId: null,
+      connectionStartPosition: null,
       hoveredNodeId: null,
       touchedNodesInConnection: new Set<string>(),
     })

@@ -1,84 +1,70 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react';
-import { useStore } from '@/store/canvas-store';
+import { useState, useEffect } from 'react';
+import { useStore } from '@/store';
 
 export default function ConnectionLine() {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const [hasInitialized, setHasInitialized] = useState(false);
   
   const connectionSourceId = useStore(state => state.connectionSourceId);
+  const connectionStartPosition = useStore(state => state.connectionStartPosition);
   const isCreatingConnection = useStore(state => state.isCreatingConnection);
   const hoveredNodeId = useStore(state => state.hoveredNodeId);
-  const panX = useStore(state => state.panX);
-  const panY = useStore(state => state.panY);
-  const zoom = useStore(state => state.zoom);
-  
-  // Use stable selectors to avoid infinite loops
+  const viewport = useStore(state => state.viewport);
+  const ideas = useStore(state => state.ideas);
+  const edges = useStore(state => state.edges);
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId);
-  const brainDumps = useStore(state => state.brainDumps);
-  const currentBrainDump = useMemo(() => {
-    return currentBrainDumpId ? brainDumps.get(currentBrainDumpId) || null : null;
-  }, [brainDumps, currentBrainDumpId]);
   
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       setMousePos({ x: e.clientX, y: e.clientY });
-      if (!hasInitialized) {
-        setHasInitialized(true);
-      }
     };
     
     if (isCreatingConnection && connectionSourceId) {
-      // Initialize with current mouse position immediately
-      const initMousePos = (e: MouseEvent) => {
-        setMousePos({ x: e.clientX, y: e.clientY });
-        setHasInitialized(true);
-      };
-      
       window.addEventListener('mousemove', handleMouseMove);
-      
-      // Try to get initial mouse position
-      window.addEventListener('mousemove', initMousePos, { once: true });
-      
       return () => {
         window.removeEventListener('mousemove', handleMouseMove);
-        setHasInitialized(false);
       };
     }
-  }, [isCreatingConnection, connectionSourceId, hasInitialized]);
+  }, [isCreatingConnection, connectionSourceId]);
   
-  // Early return if not creating connection
-  if (!isCreatingConnection || !connectionSourceId || !currentBrainDump) {
+  // Early return if not creating connection or missing start position
+  if (!isCreatingConnection || !connectionSourceId || !connectionStartPosition) {
     return null;
   }
   
-  const sourceIdea = currentBrainDump.ideas.get(connectionSourceId);
+  const sourceIdea = ideas[connectionSourceId];
   if (!sourceIdea) {
     return null;
   }
   
-  // Calculate source position in screen coordinates
-  const sourceScreenX = sourceIdea.x * zoom + panX;
-  const sourceScreenY = sourceIdea.y * zoom + panY;
+  // Use the actual screen position where the handle was clicked
+  const sourceCenterScreenX = connectionStartPosition.x;
+  const sourceCenterScreenY = connectionStartPosition.y;
   
-  // Default target is mouse position
-  let targetScreenX = mousePos.x || sourceScreenX;
-  let targetScreenY = mousePos.y || sourceScreenY;
+  // Default target is mouse position (or source if mouse hasn't moved yet)
+  let targetScreenX = mousePos.x !== 0 ? mousePos.x : sourceCenterScreenX;
+  let targetScreenY = mousePos.y !== 0 ? mousePos.y : sourceCenterScreenY;
   let lineColor = '#3b82f6'; // Blue by default
   let showLabel = false;
   let labelText = '';
+  let targetCenterScreenX = targetScreenX;
+  let targetCenterScreenY = targetScreenY;
   
   // If hovering over a different node, snap to it
   if (hoveredNodeId && hoveredNodeId !== connectionSourceId) {
-    const targetIdea = currentBrainDump.ideas.get(hoveredNodeId);
+    const targetIdea = ideas[hoveredNodeId];
     if (targetIdea) {
-      targetScreenX = targetIdea.x * zoom + panX;
-      targetScreenY = targetIdea.y * zoom + panY;
+      targetCenterScreenX = targetIdea.position_x * viewport.zoom + viewport.x;
+      targetCenterScreenY = targetIdea.position_y * viewport.zoom + viewport.y;
+      targetScreenX = targetCenterScreenX;
+      targetScreenY = targetCenterScreenY;
       
-      // Check if edge already exists
-      const existingEdge = currentBrainDump.edges.find(
-        edge => edge.sourceId === connectionSourceId && edge.targetId === hoveredNodeId
+      // Check if edge already exists (check both directions)
+      const existingEdge = Object.values(edges).find(
+        edge => edge.brain_dump_id === currentBrainDumpId &&
+                edge.parent_id === connectionSourceId && 
+                edge.child_id === hoveredNodeId
       );
       
       if (existingEdge) {
@@ -88,6 +74,37 @@ export default function ConnectionLine() {
         lineColor = '#3b82f6'; // Blue for creation
         showLabel = true;
         labelText = 'new edge';
+      }
+    }
+  }
+  
+  // Start from the center of the source node (will be behind the node visually)
+  const sourceScreenX = sourceCenterScreenX;
+  const sourceScreenY = sourceCenterScreenY;
+  
+  const dx = targetScreenX - sourceCenterScreenX;
+  const dy = targetScreenY - sourceCenterScreenY;
+  
+  // If hovering over a node, also calculate edge intersection for target
+  if (hoveredNodeId && hoveredNodeId !== connectionSourceId) {
+    const targetIdea = ideas[hoveredNodeId];
+    if (targetIdea) {
+      const targetWidth = (targetIdea.width || 200) * viewport.zoom;
+      const targetHeight = (targetIdea.height || 100) * viewport.zoom;
+      const targetHalfWidth = targetWidth / 2;
+      const targetHalfHeight = targetHeight / 2;
+      
+      const angle = Math.atan2(dy, dx);
+      const tanAngle = Math.tan(angle);
+      
+      if (Math.abs(tanAngle) < targetHalfHeight / targetHalfWidth) {
+        // Intersects left or right edge of target
+        targetScreenX = targetCenterScreenX - (dx > 0 ? targetHalfWidth : -targetHalfWidth);
+        targetScreenY = targetCenterScreenY + (targetScreenX - targetCenterScreenX) * tanAngle;
+      } else {
+        // Intersects top or bottom edge of target
+        targetScreenY = targetCenterScreenY - (dy > 0 ? targetHalfHeight : -targetHalfHeight);
+        targetScreenX = targetCenterScreenX + (targetScreenY - targetCenterScreenY) / tanAngle;
       }
     }
   }

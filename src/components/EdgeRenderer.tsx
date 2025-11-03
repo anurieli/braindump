@@ -35,6 +35,7 @@ export default function EdgeRenderer() {
         width: '100%',
         height: '100%',
         overflow: 'visible',
+        zIndex: 0,
       }}
     >
       <defs>
@@ -89,23 +90,48 @@ export default function EdgeRenderer() {
                             edge.parent_id === connectionSourceId && 
                             edge.child_id === hoveredNodeId;
         
-        // Calculate positions (center of each node)
-        const sourceX = sourceIdea.position_x + (sourceIdea.width || 200) / 2;
-        const sourceY = sourceIdea.position_y + (sourceIdea.height || 100) / 2;
-        const targetX = targetIdea.position_x + (targetIdea.width || 200) / 2;
-        const targetY = targetIdea.position_y + (targetIdea.height || 100) / 2;
+        // Node centers (position_x and position_y are centers due to transform: translate(-50%, -50%))
+        const sourceCenterX = sourceIdea.position_x;
+        const sourceCenterY = sourceIdea.position_y;
+        const targetCenterX = targetIdea.position_x;
+        const targetCenterY = targetIdea.position_y;
         
-        // Calculate the angle and shorten the line to stop before the node
-        const dx = targetX - sourceX;
-        const dy = targetY - sourceY;
+        // Calculate node dimensions
+        const sourceWidth = sourceIdea.width || 200;
+        const sourceHeight = sourceIdea.height || 100;
+        const targetWidth = targetIdea.width || 200;
+        const targetHeight = targetIdea.height || 100;
+        
+        // Calculate the direction vector from source to target
+        const dx = targetCenterX - sourceCenterX;
+        const dy = targetCenterY - sourceCenterY;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        const nodeRadius = 50; // Approximate radius to stop before the node
         
-        // Calculate shortened endpoint (arrow points at the edge of the node)
-        const shortenedX = targetX - (dx / distance) * nodeRadius;
-        const shortenedY = targetY - (dy / distance) * nodeRadius;
+        if (distance === 0) return null; // Avoid division by zero
         
-        // Calculate midpoint for label
+        // Start from the center of the source node (will be behind the node visually)
+        const sourceX = sourceCenterX;
+        const sourceY = sourceCenterY;
+        
+        const angle = Math.atan2(dy, dx);
+        const tanAngle = Math.tan(angle);
+        
+        // Calculate intersection with target node edge (stop right at the edge)
+        const targetHalfWidth = targetWidth / 2;
+        const targetHalfHeight = targetHeight / 2;
+        
+        let targetX, targetY;
+        if (Math.abs(tanAngle) < targetHalfHeight / targetHalfWidth) {
+          // Intersects left or right edge of target
+          targetX = targetCenterX - (dx > 0 ? targetHalfWidth : -targetHalfWidth);
+          targetY = targetCenterY + (targetX - targetCenterX) * tanAngle;
+        } else {
+          // Intersects top or bottom edge of target
+          targetY = targetCenterY - (dy > 0 ? targetHalfHeight : -targetHalfHeight);
+          targetX = targetCenterX + (targetY - targetCenterY) / tanAngle;
+        }
+        
+        // Calculate midpoint for label (use edge intersection points)
         const midX = (sourceX + targetX) / 2;
         const midY = (sourceY + targetY) / 2;
         
@@ -127,12 +153,12 @@ export default function EdgeRenderer() {
               className="pointer-events-auto cursor-pointer"
             />
             
-            {/* Visible straight line */}
+            {/* Visible straight line from source edge to target edge */}
             <line
               x1={sourceX}
               y1={sourceY}
-              x2={shortenedX}
-              y2={shortenedY}
+              x2={targetX}
+              y2={targetY}
               stroke={lineColor}
               strokeWidth={lineWidth}
               markerEnd={marker}

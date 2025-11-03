@@ -19,6 +19,37 @@ export const useStore = create<StoreState>()(
   )
 )
 
+// Subscribe to changes and auto-save history
+let lastIdeasSnapshot = ''
+let lastEdgesSnapshot = ''
+
+useStore.subscribe(
+  (state) => ({ ideas: state.ideas, edges: state.edges }),
+  (current) => {
+    const currentSnapshot = JSON.stringify(current)
+    const ideasSnapshot = JSON.stringify(current.ideas)
+    const edgesSnapshot = JSON.stringify(current.edges)
+    
+    // Only save if something actually changed
+    if (ideasSnapshot !== lastIdeasSnapshot || edgesSnapshot !== lastEdgesSnapshot) {
+      lastIdeasSnapshot = ideasSnapshot
+      lastEdgesSnapshot = edgesSnapshot
+      
+      // Debounce history saves to avoid too many snapshots during rapid changes
+      setTimeout(() => {
+        undoRedoManager.saveState({
+          ideas: JSON.parse(JSON.stringify(current.ideas)),
+          edges: JSON.parse(JSON.stringify(current.edges))
+        })
+      }, 100)
+    }
+  },
+  { equalityFn: (a, b) => {
+    return JSON.stringify(a.ideas) === JSON.stringify(b.ideas) && 
+           JSON.stringify(a.edges) === JSON.stringify(b.edges)
+  }}
+)
+
 // Manual undo/redo implementation
 interface HistoryState {
   ideas: StoreState['ideas']
