@@ -204,11 +204,25 @@ export const createIdeasSlice: StateCreator<
     const idea = get().ideas[id]
     const brainDumpId = idea?.brain_dump_id
     
-    // Optimistic removal
+    // Find all edges connected to this idea (they will be CASCADE deleted in DB)
+    const connectedEdgeIds = Object.keys(get().edges).filter(edgeId => {
+      const edge = get().edges[edgeId]
+      return edge.parent_id === id || edge.child_id === id
+    })
+    
+    console.log(`🗑️ Deleting idea ${id} and ${connectedEdgeIds.length} connected edges`)
+    
+    // Optimistic removal - remove idea AND its connected edges from local state
     set(state => {
       const newIdeas = { ...state.ideas }
       delete newIdeas[id]
-      return { ideas: newIdeas }
+      
+      const newEdges = { ...state.edges }
+      connectedEdgeIds.forEach(edgeId => {
+        delete newEdges[edgeId]
+      })
+      
+      return { ideas: newIdeas, edges: newEdges }
     })
 
     try {
@@ -225,7 +239,7 @@ export const createIdeasSlice: StateCreator<
       }
     } catch (error) {
       console.error('Failed to delete idea:', error)
-      // TODO: Restore idea on error
+      // TODO: Restore idea AND edges on error
     }
   },
 

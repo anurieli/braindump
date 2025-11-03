@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
 import { useStore } from '@/store';
 import { getThemeTextColor } from '@/lib/themes';
 import type { IdeaDB } from '@/types';
@@ -32,6 +32,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const setHoveredNodeId = useStore(state => state.setHoveredNodeId);
   const addTouchedNodeInConnection = useStore(state => state.addTouchedNodeInConnection);
   const addEdge = useStore(state => state.addEdge);
+  const updateIdeaDimensions = useStore(state => state.updateIdeaDimensions);
   const deleteEdge = useStore(state => state.deleteEdge);
   
   const [isDragging, setIsDragging] = useState(false);
@@ -39,6 +40,8 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const dragStartRef = useRef({ x: 0, y: 0, ideaX: idea.position_x, ideaY: idea.position_y });
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const lastClickTimeRef = useRef(0);
+  const nodeRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
   
   const isSelected = selectedIdeaIds.has(idea.id);
   const isConnectionSource = connectionSourceId === idea.id;
@@ -46,6 +49,43 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   
   const width = idea.width || 200;
   const height = idea.height || 100;
+
+  // Keep idea dimensions in sync with rendered size (accounts for borders, hover effects, etc.)
+  useLayoutEffect(() => {
+    const element = contentRef.current;
+    if (!element || typeof ResizeObserver === 'undefined') return;
+
+    const measure = () => {
+      const rect = element.getBoundingClientRect();
+      const measuredWidth = rect.width / viewport.zoom;
+      const measuredHeight = rect.height / viewport.zoom;
+
+      const storedWidth = idea.width ?? measuredWidth;
+      const storedHeight = idea.height ?? measuredHeight;
+
+      const widthDiff = Math.abs(measuredWidth - storedWidth);
+      const heightDiff = Math.abs(measuredHeight - storedHeight);
+
+      if (widthDiff > 0.5 || heightDiff > 0.5) {
+        updateIdeaDimensions(idea.id, {
+          width: Number(measuredWidth.toFixed(2)),
+          height: Number(measuredHeight.toFixed(2)),
+        });
+      }
+    };
+
+    measure();
+
+    const observer = new ResizeObserver(() => {
+      measure();
+    });
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [idea.id, idea.width, idea.height, updateIdeaDimensions, viewport.zoom]);
   
   // Handle edge creation/deletion when this node is hovered during connection
   useEffect(() => {
@@ -227,6 +267,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   return (
     <div
       className="absolute select-none"
+      ref={nodeRef}
       style={{
         left: idea.position_x,
         top: idea.position_y,
@@ -242,6 +283,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
       onMouseDown={handleMouseDown}
     >
       <div 
+        ref={contentRef}
         className={`
           relative liquid-glass rounded-lg p-3 min-w-[180px] max-w-[280px] transition-all hover:shadow-xl
           ${isConnectionSource ? 'ring-2 ring-blue-400' : ''}

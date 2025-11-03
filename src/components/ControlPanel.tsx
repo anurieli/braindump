@@ -60,17 +60,17 @@ export default function ControlPanel() {
     setIsOpen(false)
   }
 
-  const handleUndo = () => {
+  const handleUndo = async () => {
     if (canUndo()) {
-      undo()
+      await undo()
       setCanUndoState(canUndo())
       setCanRedoState(canRedo())
     }
   }
 
-  const handleRedo = () => {
+  const handleRedo = async () => {
     if (canRedo()) {
-      redo()
+      await redo()
       setCanUndoState(canUndo())
       setCanRedoState(canRedo())
     }

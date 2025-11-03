@@ -1,33 +1,18 @@
-import OpenAI from 'openai'
-
-let openaiClient: OpenAI | null = null
-
-const getOpenAIClient = (): OpenAI => {
-  if (!openaiClient) {
-    const apiKey = process.env.OPENAI_API_KEY
-    
-    if (!apiKey) {
-      throw new Error('Missing OPENAI_API_KEY environment variable')
-    }
-    
-    openaiClient = new OpenAI({
-      apiKey,
-    })
-  }
-  
-  return openaiClient
-}
-
-// Helper functions for common operations
+// Client-side API helpers that call secure server-side routes
 export const generateEmbedding = async (text: string): Promise<number[]> => {
   try {
-    const client = getOpenAIClient()
-    const response = await client.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: text,
+    const response = await fetch('/api/ai/generate-embedding', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
     })
     
-    return response.data[0].embedding
+    if (!response.ok) {
+      throw new Error(`Failed to generate embedding: ${response.statusText}`)
+    }
+    
+    const data = await response.json()
+    return data.embedding
   } catch (error) {
     console.error('Error generating embedding:', error)
     throw error
@@ -36,52 +21,20 @@ export const generateEmbedding = async (text: string): Promise<number[]> => {
 
 export const generateSummary = async (text: string): Promise<string> => {
   try {
-    const client = getOpenAIClient()
-    const response = await client.chat.completions.create({
-      model: 'gpt-4',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a helpful assistant that creates concise summaries of text. Keep summaries under 100 words and capture the main ideas.',
-        },
-        {
-          role: 'user',
-          content: `Please summarize this text: ${text}`,
-        },
-      ],
-      max_tokens: 150,
-      temperature: 0.3,
+    const response = await fetch('/api/ai/generate-summary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
     })
     
-    return response.choices[0].message.content || text
+    if (!response.ok) {
+      throw new Error(`Failed to generate summary: ${response.statusText}`)
+    }
+    
+    const data = await response.json()
+    return data.summary
   } catch (error) {
     console.error('Error generating summary:', error)
-    throw error
-  }
-}
-
-export const cleanContent = async (text: string): Promise<string> => {
-  try {
-    const client = getOpenAIClient()
-    const response = await client.chat.completions.create({
-      model: 'gpt-4',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a helpful assistant that fixes grammar and improves clarity while maintaining the original meaning and tone. Make minimal changes.',
-        },
-        {
-          role: 'user',
-          content: `Please fix the grammar and improve clarity: ${text}`,
-        },
-      ],
-      max_tokens: Math.max(text.length * 2, 100),
-      temperature: 0.1,
-    })
-    
-    return response.choices[0].message.content || text
-  } catch (error) {
-    console.error('Error cleaning grammar:', error)
     throw error
   }
 }

@@ -343,9 +343,9 @@ export default function Canvas() {
       if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         // Import dynamically to avoid circular dependency
-        import('@/store').then(({ undo, canUndo }) => {
+        import('@/store').then(async ({ undo, canUndo }) => {
           if (canUndo()) {
-            undo();
+            await undo();
           }
         });
         return;
@@ -355,9 +355,9 @@ export default function Canvas() {
       if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
         e.preventDefault();
         // Import dynamically to avoid circular dependency
-        import('@/store').then(({ redo, canRedo }) => {
+        import('@/store').then(async ({ redo, canRedo }) => {
           if (canRedo()) {
-            redo();
+            await redo();
           }
         });
         return;
