@@ -40,6 +40,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   const isPanning = useStore(state => state.isPanning);
   const isSelecting = useStore(state => state.isSelecting);
   const selectedIdeaIds = useStore(state => state.selectedIdeaIds);
+  const selectedEdgeIds = useStore(state => state.selectedEdgeIds);
   
   const updateViewport = useStore(state => state.updateViewport);
   const setSelecting = useStore(state => state.setSelecting);
@@ -49,6 +50,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   const toggleSidebar = useStore(state => state.toggleSidebar);
   const setSelection = useStore(state => state.setSelection);
   const setEdgeSelection = useStore(state => state.setEdgeSelection);
+  const deleteEdge = useStore(state => state.deleteEdge);
   const edges = useStore(state => state.edges);
   
   // Directly access ideas object and memoize to avoid infinite loop
@@ -390,10 +392,12 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
         }
       }
       
-      // Delete/Backspace - delete selected ideas
+      // Delete/Backspace - delete selected ideas and edges
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        const selectedIds = Array.from(selectedIdeaIds);
-        if (selectedIds.length > 0) {
+        const selectedIdeaIdsArray = Array.from(selectedIdeaIds);
+        const selectedEdgeIdsArray = Array.from(selectedEdgeIds);
+        
+        if (selectedIdeaIdsArray.length > 0 || selectedEdgeIdsArray.length > 0) {
           e.preventDefault();
           // Import batch functions dynamically
           import('@/store').then(({ startBatch, endBatch }) => {
@@ -403,7 +407,11 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
             startBatch();
             
             // Delete all selected ideas
-            selectedIds.forEach(id => deleteIdea(id));
+            selectedIdeaIdsArray.forEach(id => deleteIdea(id));
+            
+            // Delete all selected edges
+            selectedEdgeIdsArray.forEach(id => deleteEdge(id));
+            
             clearSelection();
             
             // End batch
@@ -415,7 +423,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIdeaIds, clearSelection, isCreatingConnection, cancelConnection, currentBrainDump, inputBoxRef]);
+  }, [selectedIdeaIds, selectedEdgeIds, clearSelection, deleteEdge, isCreatingConnection, cancelConnection, currentBrainDump, inputBoxRef]);
 
   const themeBackground = getThemeBackground(theme);
   const hasActiveBrainDump = Boolean(currentBrainDump);

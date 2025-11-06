@@ -1,11 +1,11 @@
 import { StateCreator } from 'zustand'
-import { Edge, EdgeType } from '@/types'
+import { Edge, EdgeDB, EdgeType } from '@/types'
 import { supabase } from '@/lib/supabase'
 import type { StoreState } from '../index'
 
 export interface EdgesSlice {
   // State
-  edges: Record<string, Edge>
+  edges: Record<string, EdgeDB>
   edgeTypes: EdgeType[]
   isLoadingEdgeTypes: boolean
 
@@ -16,13 +16,13 @@ export interface EdgesSlice {
   updateEdge: (id: string, updates: { type?: string, note?: string }) => Promise<void>
   deleteEdge: (id: string) => Promise<void>
   createCustomEdgeType: (name: string) => Promise<string>
-  validateEdge: (parentId: string, childId: string) => { valid: boolean, reason?: string }
+  validateEdge: (parentId: string, childId: string, edgeType?: string) => { valid: boolean, reason?: string }
 
   // Selectors
-  getEdgesArray: () => Edge[]
-  getEdgesForIdea: (ideaId: string) => { parents: Edge[], children: Edge[] }
-  getEdgesByType: (type: string) => Edge[]
-  wouldCreateCycle: (parentId: string, childId: string) => boolean
+  getEdgesArray: () => EdgeDB[]
+  getEdgesForIdea: (ideaId: string) => { parents: EdgeDB[], children: EdgeDB[] }
+  getEdgesByType: (type: string) => EdgeDB[]
+  wouldCreateCycle: (parentId: string, childId: string, edgeType?: string) => boolean
 }
 
 export const createEdgesSlice: StateCreator<
@@ -48,7 +48,7 @@ export const createEdgesSlice: StateCreator<
       if (error) throw error
 
       // Convert array to record for easier lookups
-      const edgesRecord: Record<string, Edge> = {}
+      const edgesRecord: Record<string, EdgeDB> = {}
       data?.forEach(edge => {
         edgesRecord[edge.id] = edge
       })
@@ -80,14 +80,14 @@ export const createEdgesSlice: StateCreator<
 
   addEdge: async (parentId: string, childId: string, type: string, note?: string) => {
     // Validate edge before creating
-    const validation = get().validateEdge(parentId, childId)
+    const validation = get().validateEdge(parentId, childId, type)
     if (!validation.valid) {
       throw new Error(validation.reason || 'Invalid edge')
     }
 
     // Create temporary edge for optimistic update
     const tempId = `temp-${Date.now()}`
-    const tempEdge: Edge = {
+    const tempEdge: EdgeDB = {
       id: tempId,
       brain_dump_id: '', // Will be set from context
       parent_id: parentId,
@@ -243,7 +243,7 @@ export const createEdgesSlice: StateCreator<
     }
   },
 
-  validateEdge: (parentId: string, childId: string) => {
+  validateEdge: (parentId: string, childId: string, edgeType?: string) => {
     // Check for self-reference
     if (parentId === childId) {
       return { valid: false, reason: 'Cannot create edge to same idea' }
@@ -257,9 +257,26 @@ export const createEdgesSlice: StateCreator<
       return { valid: false, reason: 'Edge already exists between these ideas' }
     }
 
-    // Check for circular dependency
-    if (get().wouldCreateCycle(parentId, childId)) {
-      return { valid: false, reason: 'Would create circular dependency' }
+    // Get edge type behavior if provided
+    const edgeTypes = get().edgeTypes
+    const typeConfig = edgeType ? edgeTypes.find(et => et.name === edgeType) : null
+
+    // Check for circular dependency only if edge type prevents cycles
+    if (!typeConfig || typeConfig.prevents_cycles) {
+      if (get().wouldCreateCycle(parentId, childId, edgeType)) {
+        return { valid: false, reason: 'Would create circular dependency' }
+      }
+    }
+
+    // For bidirectional edge types, check if reverse edge exists
+    if (typeConfig?.allows_bidirectional) {
+      const reverseEdge = Object.values(get().edges).find(
+        edge => edge.parent_id === childId && edge.child_id === parentId && edge.type === edgeType
+      )
+      if (reverseEdge) {
+        // This is fine for bidirectional relationships - we're creating A→B when B→A exists
+        return { valid: true }
+      }
     }
 
     return { valid: true }
@@ -282,9 +299,22 @@ export const createEdgesSlice: StateCreator<
     return Object.values(get().edges).filter(edge => edge.type === type)
   },
 
-  wouldCreateCycle: (parentId: string, childId: string) => {
-    // Simple cycle detection using DFS
+  wouldCreateCycle: (parentId: string, childId: string, edgeType?: string) => {
+    // Get edge type behavior
+    const edgeTypes = get().edgeTypes
+    const typeConfig = edgeType ? edgeTypes.find(et => et.name === edgeType) : null
+    
+    // If edge type allows bidirectional relationships, no cycle check needed
+    if (typeConfig?.allows_bidirectional) {
+      return false
+    }
+    
+    // For hierarchical relationships, check cycles within the same edge type
     const edges = Object.values(get().edges)
+    const relevantEdges = edgeType 
+      ? edges.filter(edge => edge.type === edgeType)  // Only check same type
+      : edges  // Check all edges if no type specified
+    
     const visited = new Set<string>()
     
     const hasPath = (from: string, to: string): boolean => {
@@ -293,8 +323,8 @@ export const createEdgesSlice: StateCreator<
       
       visited.add(from)
       
-      // Find all children of 'from'
-      const children = edges
+      // Find all children of 'from' in relevant edges
+      const children = relevantEdges
         .filter(edge => edge.parent_id === from)
         .map(edge => edge.child_id)
       

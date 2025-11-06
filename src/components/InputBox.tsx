@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useState, KeyboardEvent, useRef, useMemo, forwardRef, useImperativeHandle } from 'react'
+import React, { useState, KeyboardEvent, useRef, useMemo, forwardRef, useImperativeHandle, useEffect } from 'react'
 import { Plus, X, Paperclip } from 'lucide-react'
 import { useStore } from '@/store'
 import type { ThemeType } from '@/types'
 import { Button } from '@/components/ui/button'
+import { findNonOverlappingPosition as findPosition } from '@/lib/idea-positioning'
 
 // Theme utilities (copied from Dumpfigma)
 interface Theme {
@@ -58,6 +59,9 @@ const themes: Record<ThemeType, Theme> = {
     isDark: false,
   },
 }
+
+const IDEA_WIDTH = 200
+const IDEA_HEIGHT = 100
 
 function getThemeTextColor(theme: ThemeType): {
   primary: string
@@ -115,55 +119,6 @@ function getLiquidGlassStyle(theme: ThemeType, isActive: boolean = false) {
   }
 }
 
-// Helper function to find a non-overlapping position for a new idea
-function findNonOverlappingPosition(
-  ideas: Map<string, { x: number; y: number; width?: number; height?: number }>,
-  centerX: number,
-  centerY: number,
-  minDistance: number = 250
-): { x: number; y: number } {
-  const existingPositions = Array.from(ideas.values()).map(idea => ({ x: idea.x, y: idea.y }))
-  
-  // If no existing ideas, return center
-  if (existingPositions.length === 0) {
-    return { x: centerX, y: centerY }
-  }
-  
-  // Try to find a spot in a spiral pattern
-  let angle = 0
-  let radius = minDistance
-  const angleIncrement = Math.PI / 6 // 30 degrees
-  const radiusIncrement = 50
-  const maxAttempts = 100
-  
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const testX = centerX + Math.cos(angle) * radius
-    const testY = centerY + Math.sin(angle) * radius
-    
-    // Check if this position is far enough from all existing ideas
-    const isFarEnough = existingPositions.every(pos => {
-      const distance = Math.sqrt(Math.pow(testX - pos.x, 2) + Math.pow(testY - pos.y, 2))
-      return distance >= minDistance
-    })
-    
-    if (isFarEnough) {
-      return { x: testX, y: testY }
-    }
-    
-    // Spiral outward
-    angle += angleIncrement
-    if (angle > Math.PI * 2) {
-      angle -= Math.PI * 2
-      radius += radiusIncrement
-    }
-  }
-  
-  // Fallback: return a random position near the center
-  return {
-    x: centerX + (Math.random() - 0.5) * radius * 2,
-    y: centerY + (Math.random() - 0.5) * radius * 2,
-  }
-}
 
 type LocalAttachment = {
   id: string
@@ -205,7 +160,7 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
   const [attachments, setAttachments] = useState<LocalAttachment[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   
   const addIdea = useStore(state => state.addIdea)
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
@@ -213,6 +168,8 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
   const theme = useStore(state => state.theme)
   const viewport = useStore(state => state.viewport)
   const isSidebarOpen = useStore(state => state.isSidebarOpen)
+  const lastPlacedIdeaPosition = useStore(state => state.lastPlacedIdeaPosition)
+  const updateViewport = useStore(state => state.updateViewport)
   
   const sidebarWidth = isSidebarOpen ? 320 : 0 // 320px is the width from SidePanel
 
@@ -223,27 +180,16 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
       inputRef.current?.focus()
     }
   }))
+
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    const textarea = inputRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`
+    }
+  }, [inputValue])
   
-  // Get ideas for current brain dump as array for position calculation
-  const currentIdeas = useMemo(() => {
-    if (!currentBrainDumpId) return []
-    return Object.values(ideas).filter(idea => idea.brain_dump_id === currentBrainDumpId)
-  }, [ideas, currentBrainDumpId])
-  
-  // Convert to Map format for findNonOverlappingPosition function
-  const ideasMap = useMemo(() => {
-    const map = new Map()
-    currentIdeas.forEach(idea => {
-      map.set(idea.id, {
-        id: idea.id,
-        x: idea.position_x,
-        y: idea.position_y,
-        width: idea.width || 200,
-        height: idea.height || 100
-      })
-    })
-    return map
-  }, [currentIdeas])
 
   const handleSubmit = async () => {
     if (!inputValue.trim() || !currentBrainDumpId) {
@@ -256,10 +202,22 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
       const viewportCenterY = (window.innerHeight / 2 - viewport.y) / viewport.zoom
       
       // Find a non-overlapping position using smart placement
-      const { x, y } = findNonOverlappingPosition(ideasMap, viewportCenterX, viewportCenterY)
+      const { x, y } = findPosition(ideas, viewportCenterX, viewportCenterY, lastPlacedIdeaPosition, 220, currentBrainDumpId)
       
       // Call addIdea with text and position (handles database insertion)
       await addIdea(inputValue.trim(), { x, y })
+
+      // Center viewport on newly placed idea
+      const ideaCenterX = x + IDEA_WIDTH / 2
+      const ideaCenterY = y + IDEA_HEIGHT / 2
+      const screenCenterX = sidebarWidth + (window.innerWidth - sidebarWidth) / 2
+      const screenCenterY = window.innerHeight / 2
+
+      updateViewport({
+        x: screenCenterX - ideaCenterX * viewport.zoom,
+        y: screenCenterY - ideaCenterY * viewport.zoom,
+        zoom: viewport.zoom,
+      })
       
       setInputValue('')
       setAttachments([])
@@ -271,11 +229,12 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
     }
   }
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSubmit()
     }
+    // Shift+Enter allows new line (default textarea behavior)
   }
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -331,7 +290,7 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
     setAttachments(prev => prev.filter(a => a.id !== id))
   }
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const pastedText = e.clipboardData.getData('text/plain')
     if (!pastedText) {
       return
@@ -427,22 +386,36 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
       >
         {/* Main input area */}
         <div className="px-6 pt-5">
-          <input
+          <textarea
             ref={inputRef}
-            type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="Capture your thoughts..."
-            className="w-full bg-transparent outline-none text-lg placeholder-opacity-60"
+            className="w-full bg-transparent outline-none text-lg placeholder-opacity-60 resize-none"
             style={{ 
               color: textColors.primary,
+              minHeight: '28px',
+              maxHeight: '120px',
             }}
+            rows={1}
           />
-          <p className="text-sm mt-2" style={{ color: textColors.tertiary }}>
-            Attach URLs, images, and supporting context.
-          </p>
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-sm" style={{ color: textColors.tertiary }}>
+              Attach URLs, images, and supporting context.
+            </p>
+            <div className="flex items-center gap-2 text-sm">
+              <span style={{ color: inputValue.length > 50 ? textColors.secondary : textColors.tertiary }}>
+                {inputValue.length} / 50
+              </span>
+              {inputValue.length > 50 && (
+                <span className="text-xs" style={{ color: textColors.secondary }}>
+                  • Idea will be summarized with AI
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Attachments display - horizontal scrolling */}

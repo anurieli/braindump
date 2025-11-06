@@ -262,7 +262,10 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     }
   }, [isCreatingConnection, connectionSourceId, idea.id, setHoveredNodeId]);
   
-  const displayText = idea.text.length > 100 ? idea.text.substring(0, 100) + '...' : idea.text;
+  // Display logic: show summary as main text if available, otherwise show original text
+  const hasValidSummary = idea.summary && idea.summary.trim().length > 0;
+  const mainText = hasValidSummary ? idea.summary : idea.text;
+  const displayText = mainText.length > 100 ? mainText.substring(0, 100) + '...' : mainText;
   
   return (
     <div
@@ -308,11 +311,16 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         {/* Content */}
         <p className="text-sm break-words">{displayText}</p>
         
-        {/* Summary footer */}
-        {idea.summary && (
+        {/* Original text preview when summary is shown */}
+        {hasValidSummary && (
           <div className="mt-2 pt-2 border-t border-current/10">
-            <p className="text-xs opacity-50 truncate">
-              {idea.summary}
+            <p className="text-xs opacity-50 overflow-hidden" style={{
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+              maxHeight: '2.5rem'
+            }}>
+              {idea.text.length > 100 ? idea.text.substring(0, 100) + '...' : idea.text}
             </p>
           </div>
         )}

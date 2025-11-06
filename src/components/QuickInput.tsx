@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { Search, Plus, Paperclip, ArrowUp } from 'lucide-react'
 import { useStore, useStoreActions } from '@/store'
+import { findNonOverlappingPosition } from '@/lib/idea-positioning'
 
 export function QuickInput() {
   const [inputText, setInputText] = useState('')
@@ -13,9 +14,16 @@ export function QuickInput() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const { addIdea } = useStoreActions()
+  const { addIdea, updateViewport } = useStoreActions()
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
   const viewport = useStore(state => state.viewport)
+  const ideas = useStore(state => state.ideas)
+  const lastPlacedIdeaPosition = useStore(state => state.lastPlacedIdeaPosition)
+  const isSidebarOpen = useStore(state => state.isSidebarOpen)
+
+  const sidebarWidth = isSidebarOpen ? 320 : 0
+  const IDEA_WIDTH = 200
+  const IDEA_HEIGHT = 100
 
   // Create object URLs for image previews and clean them up on change/unmount
   useEffect(() => {
@@ -35,15 +43,33 @@ export function QuickInput() {
 
     setIsLoading(true)
     try {
-      // Calculate position for new idea (center of current viewport in world coordinates)
+      // Calculate viewport center in world coordinates
       // In Konva, negative stage position means we've moved right/down in world space
       const centerX = (-viewport.x + window.innerWidth / 2) / viewport.zoom
       const centerY = (-viewport.y + window.innerHeight / 2) / viewport.zoom
 
-      // Add idea with text
-      const ideaId = await addIdea(inputText.trim(), {
-        x: centerX,
-        y: centerY
+      // Find optimal position using smart placement
+      const { x, y } = findNonOverlappingPosition(
+        ideas,
+        centerX,
+        centerY,
+        lastPlacedIdeaPosition,
+        220, // minDistance
+        currentBrainDumpId
+      )
+
+      // Add idea with calculated position
+      await addIdea(inputText.trim(), { x, y })
+
+      const ideaCenterX = x + IDEA_WIDTH / 2
+      const ideaCenterY = y + IDEA_HEIGHT / 2
+      const screenCenterX = sidebarWidth + (window.innerWidth - sidebarWidth) / 2
+      const screenCenterY = window.innerHeight / 2
+
+      updateViewport({
+        x: screenCenterX - ideaCenterX * viewport.zoom,
+        y: screenCenterY - ideaCenterY * viewport.zoom,
+        zoom: viewport.zoom,
       })
 
       // TODO: Handle attachments upload

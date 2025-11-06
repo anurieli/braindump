@@ -437,7 +437,7 @@ This roadmap breaks down the MVP build into 6 phases over 6 weeks. Each phase bu
 ### Success Criteria
 
 - [✅] Undo/redo works for all actions (including database restoration)
-- [ ] All keyboard shortcuts work
+- [✅] All keyboard shortcuts work (including auto-typing)
 - [ ] Canvas performs at 60 FPS with 500 ideas
 - [ ] No critical bugs
 - [ ] All tests passing

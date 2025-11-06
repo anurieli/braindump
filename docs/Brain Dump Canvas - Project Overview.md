@@ -23,6 +23,7 @@ Rapidly dump ideas into an infinite 2D canvas via a persistent input box. Each i
 
 **1. Zero-Friction Input**
 - Persistent input box at bottom of screen
+- Start typing anywhere on canvas to auto-focus input
 - Enter to submit, idea appears instantly
 - No menus, no dialogs, no interruptions
 - Can submit 10 ideas in 30 seconds

@@ -57,6 +57,9 @@ export interface EdgeType {
   id: string;
   name: string;
   is_default: boolean;
+  allows_bidirectional: boolean;
+  prevents_cycles: boolean;
+  description?: string;
   created_at: string;
 }
 

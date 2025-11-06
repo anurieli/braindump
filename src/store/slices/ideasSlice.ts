@@ -13,6 +13,7 @@ export interface IdeasSlice {
   ideas: Record<string, Idea>
   selectedIdeaId: string | null
   isProcessing: Record<string, boolean>
+  lastPlacedIdeaPosition: { x: number, y: number } | null
 
   // Actions
   loadIdeas: (brainDumpId: string) => Promise<void>
@@ -41,6 +42,7 @@ export const createIdeasSlice: StateCreator<
   ideas: {},
   selectedIdeaId: null,
   isProcessing: {},
+  lastPlacedIdeaPosition: null,
 
   // Actions
   loadIdeas: async (brainDumpId: string) => {
@@ -85,7 +87,8 @@ export const createIdeasSlice: StateCreator<
     // Add to state immediately
     set(state => ({
       ideas: { ...state.ideas, [tempId]: tempIdea },
-      isProcessing: { ...state.isProcessing, [tempId]: true }
+      isProcessing: { ...state.isProcessing, [tempId]: true },
+      lastPlacedIdeaPosition: position
     }))
 
     try {
@@ -126,7 +129,11 @@ export const createIdeasSlice: StateCreator<
         delete newProcessing[tempId]
         newProcessing[data.id] = true
 
-        return { ideas: newIdeas, isProcessing: newProcessing }
+        return { 
+          ideas: newIdeas, 
+          isProcessing: newProcessing,
+          lastPlacedIdeaPosition: { x: data.position_x, y: data.position_y }
+        }
       })
 
       // Process AI enhancements in background
@@ -207,7 +214,7 @@ export const createIdeasSlice: StateCreator<
     // Find all edges connected to this idea (they will be CASCADE deleted in DB)
     const connectedEdgeIds = Object.keys(get().edges).filter(edgeId => {
       const edge = get().edges[edgeId]
-      return edge.parent_id === id || edge.child_id === id
+      return edge.sourceId === id || edge.targetId === id
     })
     
     console.log(`🗑️ Deleting idea ${id} and ${connectedEdgeIds.length} connected edges`)
