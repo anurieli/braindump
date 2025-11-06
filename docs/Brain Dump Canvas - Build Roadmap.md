@@ -1,7 +1,7 @@
 # Brain Dump Canvas - Build Roadmap
 
-**Version**: 1.0  
-**Last Updated**: October 27, 2025  
+**Version**: 1.1  
+**Last Updated**: November 6, 2025  
 **Timeline**: 6 weeks to MVP
 
 ---
@@ -383,13 +383,17 @@ This roadmap breaks down the MVP build into 6 phases over 6 weeks. Each phase bu
 
 ### Deliverables
 
-**Undo/Redo**:
-- Implement action history stack
-- Ctrl+Z to undo
-- Ctrl+Y to redo
-- Support for all actions (move, create, delete, edit)
-- Max 10 actions in stack
-- Clear on brain dump switch
+**Undo/Redo**: ✅ COMPLETE
+- ✅ Implement action history stack (UndoRedoManager class)
+- ✅ Ctrl+Z / Cmd+Z to undo
+- ✅ Ctrl+Shift+Z / Cmd+Shift+Z to redo
+- ✅ Support for all actions (move, create, delete, edit)
+- ✅ Max 50 actions in stack
+- ✅ Database synchronization for deleted item restoration
+- ✅ Automatic history tracking via Zustand subscription
+- ✅ Edge cascade delete handling
+- ✅ UI buttons in control panel
+- ✅ Clear on brain dump switch
 
 **Keyboard Shortcuts**:
 - All shortcuts implemented (see PRD section 7)
@@ -432,7 +436,7 @@ This roadmap breaks down the MVP build into 6 phases over 6 weeks. Each phase bu
 
 ### Success Criteria
 
-- [ ] Undo/redo works for all actions
+- [✅] Undo/redo works for all actions (including database restoration)
 - [ ] All keyboard shortcuts work
 - [ ] Canvas performs at 60 FPS with 500 ideas
 - [ ] No critical bugs
@@ -443,9 +447,12 @@ This roadmap breaks down the MVP build into 6 phases over 6 weeks. Each phase bu
 
 ### Technical Tasks
 
-1. Implement undo/redo system
-2. Build action history stack
-3. Add all keyboard shortcuts
+1. ✅ Implement undo/redo system with database sync
+2. ✅ Build action history stack (UndoRedoManager)
+3. ✅ Add undo/redo keyboard shortcuts (Cmd+Z, Cmd+Shift+Z)
+4. ✅ Create ControlPanel component with undo/redo buttons
+5. ✅ Handle CASCADE delete edge restoration
+6. Add remaining keyboard shortcuts
 4. Optimize viewport culling
 5. Add memoization to components
 6. Optimize database queries

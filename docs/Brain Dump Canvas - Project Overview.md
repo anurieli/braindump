@@ -1,7 +1,7 @@
 # Brain Dump Canvas - Project Overview
 
-**Version**: 1.0  
-**Last Updated**: October 27, 2025
+**Version**: 1.1  
+**Last Updated**: November 6, 2025
 
 ---
 
@@ -86,7 +86,7 @@ Rapidly dump ideas into an infinite 2D canvas via a persistent input box. Each i
 - View idea details in modal
 - Automatic summarization of long ideas
 - Attach files and URLs to ideas
-- Undo/redo (10 actions)
+- Undo/redo (50 actions with database persistence) ✅
 - Pan/zoom canvas navigation
 - Theme toggle (light/dark)
 - Grid toggle (dots/lines)

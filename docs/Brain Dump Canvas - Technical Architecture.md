@@ -1,7 +1,7 @@
 # Brain Dump Canvas - Technical Architecture
 
-**Version**: 1.0  
-**Last Updated**: October 27, 2025
+**Version**: 1.1  
+**Last Updated**: November 6, 2025
 
 ---
 
@@ -519,6 +519,48 @@ export const queue = new JobQueue();
 ```
 
 **Upgrade Path**: Replace with BullMQ + Redis for production
+
+---
+
+## Undo/Redo System
+
+### Architecture
+
+The undo/redo system maintains history stacks per brain dump and synchronizes with the database to restore deleted items.
+
+**UndoRedoManager Class**:
+- Manages history array with max 50 states
+- Tracks current position for undo/redo navigation
+- Deep clones ideas and edges to prevent reference issues
+
+**Automatic Tracking**:
+- Zustand subscription captures state changes
+- 100ms debounce prevents excessive snapshots during dragging
+- Only saves when ideas or edges actually change
+
+### Database Synchronization
+
+**Critical Feature**: When undoing, the system detects deleted items and restores them to the database using `upsert` operations.
+
+**Why This Matters**:
+- PostgreSQL CASCADE DELETE removes edges when ideas are deleted
+- Without database sync, restored items would disappear on page refresh
+- Ideas must be restored BEFORE edges (foreign key constraints)
+
+**Edge CASCADE Handling**:
+When deleting an idea, the system:
+1. Finds all connected edges (will be CASCADE deleted by database)
+2. Removes both idea AND edges from local state simultaneously
+3. Ensures history accurately captures all deletions
+
+**Problem Solved**: Edges previously remained in local state after idea deletion, causing incomplete history. Now both are removed together.
+
+### User Interface
+
+- **Control Panel**: Undo/Redo buttons in top-right corner
+- **Keyboard Shortcuts**: `Cmd+Z` / `Cmd+Shift+Z` (works globally except in text inputs)
+- **Button States**: Automatically disabled when no actions available
+- **Performance**: ~2KB per history entry, async database operations
 
 ---
 

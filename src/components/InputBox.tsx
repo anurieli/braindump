@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, KeyboardEvent, useRef, useMemo } from 'react'
+import React, { useState, KeyboardEvent, useRef, useMemo, forwardRef, useImperativeHandle } from 'react'
 import { Plus, X, Paperclip } from 'lucide-react'
 import { useStore } from '@/store'
 import type { ThemeType } from '@/types'
@@ -195,11 +195,17 @@ function extractUrlsFromText(text: string): string[] {
   return matches ? matches : []
 }
 
-export default function InputBox() {
+// Interface for external control of InputBox
+export interface InputBoxHandle {
+  focusAndSetValue: (value: string) => void
+}
+
+const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
   const [inputValue, setInputValue] = useState('')
   const [attachments, setAttachments] = useState<LocalAttachment[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   
   const addIdea = useStore(state => state.addIdea)
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
@@ -209,6 +215,14 @@ export default function InputBox() {
   const isSidebarOpen = useStore(state => state.isSidebarOpen)
   
   const sidebarWidth = isSidebarOpen ? 320 : 0 // 320px is the width from SidePanel
+
+  // Expose methods to parent component through ref
+  useImperativeHandle(ref, () => ({
+    focusAndSetValue: (value: string) => {
+      setInputValue(value)
+      inputRef.current?.focus()
+    }
+  }))
   
   // Get ideas for current brain dump as array for position calculation
   const currentIdeas = useMemo(() => {
@@ -414,6 +428,7 @@ export default function InputBox() {
         {/* Main input area */}
         <div className="px-6 pt-5">
           <input
+            ref={inputRef}
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
@@ -507,4 +522,8 @@ export default function InputBox() {
       </div>
     </div>
   )
-}
+})
+
+InputBox.displayName = 'InputBox'
+
+export default InputBox

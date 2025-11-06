@@ -10,8 +10,13 @@ import EdgeRenderer from './EdgeRenderer';
 import ConnectionLine from './ConnectionLine';
 import DetailModal from './DetailModal';
 import BatchActions from './BatchActions';
+import type { InputBoxHandle } from './InputBox';
 
-export default function Canvas() {
+interface CanvasProps {
+  inputBoxRef?: React.RefObject<InputBoxHandle>
+}
+
+export default function Canvas({ inputBoxRef }: CanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   
   // Use stable selectors to avoid infinite loops
@@ -339,6 +344,19 @@ export default function Canvas() {
         return;
       }
 
+      // Auto-typing feature: detect alphanumeric characters and numbers
+      // Only trigger if we have a current brain dump and input box ref
+      if (currentBrainDump && inputBoxRef?.current && 
+          !e.metaKey && !e.ctrlKey && !e.altKey && // No modifier keys
+          !isCreatingConnection && // Not in connection mode
+          e.key.length === 1 && // Single character
+          /[a-zA-Z0-9]/.test(e.key)) { // Alphanumeric only
+        console.log('🎯 Auto-typing triggered for:', e.key); // Debug log
+        e.preventDefault();
+        inputBoxRef.current.focusAndSetValue(e.key);
+        return;
+      }
+
       // Command+Z (Mac) or Ctrl+Z (Windows/Linux) - Undo
       if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -397,7 +415,7 @@ export default function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIdeaIds, clearSelection, isCreatingConnection, cancelConnection]);
+  }, [selectedIdeaIds, clearSelection, isCreatingConnection, cancelConnection, currentBrainDump, inputBoxRef]);
 
   const themeBackground = getThemeBackground(theme);
   const hasActiveBrainDump = Boolean(currentBrainDump);

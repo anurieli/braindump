@@ -1,7 +1,7 @@
 # Brain Dump Canvas - MVP Product Requirements Document
 
-**Version**: 1.0  
-**Last Updated**: October 27, 2025  
+**Version**: 1.1  
+**Last Updated**: November 6, 2025  
 **Target Completion**: 6 weeks from start
 
 ---
@@ -276,26 +276,28 @@ Render canvas
 
 ### 3.7 Undo/Redo Flow
 
-**Goal**: Recover from mistakes
+**Goal**: Recover from mistakes with full database persistence
 
 **Steps**:
 1. User moves idea to wrong position
-2. User presses Ctrl+Z
+2. User presses Ctrl+Z (or clicks undo button)
 3. Idea returns to previous position
-4. User deletes idea accidentally
+4. User deletes idea with connected edges
 5. User presses Ctrl+Z
-6. Idea is restored
+6. Idea AND edges are restored (from database)
 7. User creates edge
 8. User presses Ctrl+Z
 9. Edge is removed
-10. User presses Ctrl+Y
+10. User presses Ctrl+Y (or clicks redo button)
 11. Edge is restored
 
 **Success Criteria**:
-- Undo/redo works for all actions
-- Max 10 actions in history
-- Keyboard shortcuts work reliably
-- Visual feedback for undo/redo
+- ✅ Undo/redo works for all actions (move, create, delete, edit)
+- ✅ Max 50 actions in history per brain dump
+- ✅ Keyboard shortcuts work reliably (async with database)
+- ✅ Visual feedback via disabled button states
+- ✅ Deleted items fully restored from database
+- ✅ Connected edges restore with parent ideas
 
 ---
 
@@ -308,6 +310,13 @@ Render canvas
 - Creation date (read-only)
 - Idea count (updates in real-time)
 - Control panel button (opens dropdown)
+
+**Undo/Redo Controls** (positioned next to Control Panel):
+- Two icon buttons in liquid-glass container
+- Undo button (⟲ icon) - Command+Z
+- Redo button (⟳ icon) - Command+Shift+Z
+- Buttons disabled when no actions available
+- Hover tooltips show keyboard shortcuts
 
 **Control Panel Dropdown**:
 - Theme toggle (light/dark)
@@ -562,24 +571,40 @@ Render canvas
 
 **Scope**:
 - Per brain dump (each has own history)
-- Session-only (not persisted)
-- Max 10 actions in stack
+- Database-persisted (deleted items are restored from database)
+- Max 50 actions in stack (configurable)
+- 100ms debounce to prevent excessive snapshots
 
 **Covered Actions**:
 - Move idea (position change)
 - Create idea
-- Delete idea
+- Delete idea (restores from database)
 - Edit idea text
 - Create edge
-- Delete edge
+- Delete edge (restores from database)
+- Cascade deletes (edges deleted with parent idea)
+
+**Implementation Details**:
+- **UndoRedoManager**: Custom class managing history stacks
+- **Automatic Tracking**: Zustand subscription captures state changes
+- **Database Sync**: Async upsert operations restore deleted items
+- **Deep Cloning**: Prevents reference issues in history
+- **Foreign Key Handling**: Ideas restored before edges (dependency order)
 
 **Keyboard Shortcuts**:
 - Ctrl+Z (Cmd+Z on Mac): Undo
-- Ctrl+Y (Cmd+Shift+Z on Mac): Redo
+- Ctrl+Shift+Z (Cmd+Shift+Z on Mac): Redo
+- Works globally except in input fields
+
+**UI Controls**:
+- Undo/Redo buttons in top-right corner
+- Disabled when no actions available
+- Tooltips show keyboard shortcuts
+- Icon indicators (⟲ Undo, ⟳ Redo)
 
 **Behavior**:
-- Undo: reverse last action, add to redo stack
-- Redo: reapply last undone action, add to undo stack
+- Undo: reverse last action, restore from database if needed, add to redo stack
+- Redo: reapply last undone action, sync with database, add to undo stack
 - New action: clear redo stack
 - Switch brain dump: clear both stacks
 
@@ -591,8 +616,8 @@ Render canvas
 
 | Shortcut | Action |
 |----------|--------|
-| **Ctrl+Z** | Undo last action |
-| **Ctrl+Y** | Redo last undone action |
+| **Ctrl+Z** / **Cmd+Z** | Undo last action |
+| **Ctrl+Shift+Z** / **Cmd+Shift+Z** | Redo last undone action |
 | **Ctrl+N** | Create new brain dump |
 | **Ctrl+D** | Duplicate current brain dump |
 | **Ctrl+/** | Toggle side panel |
@@ -604,6 +629,7 @@ Render canvas
 | **Ctrl+A** | Select all ideas on canvas |
 | **Enter** | Submit idea (in input box) |
 | **Shift+Enter** | New line (in input box) |
+| **Any letter/number** | Auto-focus input box and start typing |
 
 ### 5.2 Multi-Select
 

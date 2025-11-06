@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useStore } from '@/store'
 import { getCurrentSession } from '@/lib/auth-helpers'
 import Canvas from '@/components/Canvas'
 import CanvasHeader from '@/components/CanvasHeader'
 import EmptyState from '@/components/EmptyState'
-import InputBox from '@/components/InputBox'
+import InputBox, { InputBoxHandle } from '@/components/InputBox'
 import SidePanel from '@/components/SidePanel'
 import Toolbar from '@/components/Toolbar'
 import ControlPanel from '@/components/ControlPanel'
@@ -17,6 +17,7 @@ import SettingsModal from '@/components/SettingsModal'
 export default function Home() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
+  const inputBoxRef = useRef<InputBoxHandle>(null)
   
   const brainDumps = useStore(state => state.brainDumps)
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
@@ -105,7 +106,7 @@ export default function Home() {
       {/* Main Content Area */}
       <div className="flex-1 h-full relative overflow-hidden">
         {/* Main Canvas */}
-        <Canvas />
+        <Canvas inputBoxRef={inputBoxRef} />
 
         {/* Canvas Header */}
         <CanvasHeader />
@@ -115,7 +116,7 @@ export default function Home() {
         ) : (
           <>
             {/* Input Box */}
-            <InputBox />
+            <InputBox ref={inputBoxRef} />
 
             {/* Toolbar */}
             <Toolbar />
