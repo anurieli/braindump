@@ -259,7 +259,7 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
         id: `attachment-${Date.now()}-${Math.random()}`,
         type: file.type.startsWith('image/') ? 'image' : 'file',
         name: file.name,
-        thumbnail: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
+        thumbnail: undefined,
       }))
       setAttachments([...attachments, ...newAttachments])
     } else if (urls) {
@@ -280,7 +280,7 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
         id: `attachment-${Date.now()}-${Math.random()}`,
         type: file.type.startsWith('image/') ? 'image' : 'file',
         name: file.name,
-        thumbnail: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
+        thumbnail: undefined,
       }))
       setAttachments([...attachments, ...newAttachments])
     }

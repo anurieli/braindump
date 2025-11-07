@@ -44,7 +44,7 @@ This PRD defines what needs to be built for the MVP. It focuses on product requi
 - Canvas: Konva.js (react-konva)
 - State: Zustand
 - Database: Supabase PostgreSQL with pgvector
-- Storage: Supabase Storage
+- Storage: Supabase Storage (with base64 fallback for small files)
 - AI: OpenAI API
 
 ### 1.3 Environment Variables
@@ -88,9 +88,9 @@ OPENAI_API_KEY=sk-...
 
 **Database (Supabase PostgreSQL)**:
 - Brain dumps (workspaces)
-- Ideas (nodes with position, text, embeddings)
+- Ideas (text and attachment nodes with position, embeddings)
 - Edges (relationships between ideas)
-- Attachments (files, URLs)
+- Attachments (files stored separately for attachment ideas)
 - AI operations log (monitoring)
 
 **AI Services (OpenAI)**:
@@ -252,27 +252,29 @@ Render canvas
 - Each brain dump is fully isolated
 - Viewport state persists per brain dump
 
-### 3.6 Attachment Flow
+### 3.6 Attachment Ideas Flow ✅ IMPLEMENTED
 
-**Goal**: Attach files and URLs to ideas
+**Goal**: Create file-based ideas by dropping files directly onto canvas
 
 **Steps**:
-1. User types idea in input box
-2. User drags image file from desktop onto input box
-3. File appears as thumbnail in attachment section
-4. User presses Enter
-5. Idea created with attachment
-6. User double-clicks idea to view modal
-7. Attachment displayed with preview
-8. User clicks attachment to view full size
-9. User can add more attachments in edit mode
-10. User can remove attachments with X button
+1. User drags file from desktop onto canvas
+2. Canvas shows visual drop zone indicator
+3. File validation occurs (type, size limits)
+4. Description input modal appears with pre-filled filename
+5. User enters description and confirms
+6. File uploads to storage (Supabase or base64 fallback)
+7. Square attachment idea appears on canvas at drop location
+8. File preview displays (image thumbnail or file type icon)
+9. User can download file via download button
+10. User can interact with attachment idea like regular ideas (move, connect, select)
 
-**Success Criteria**:
-- Drag-and-drop works smoothly
-- Supported formats: images, PDFs, text files
-- Thumbnails display correctly
-- Files stored securely in Supabase Storage
+**Success Criteria**: ✅ COMPLETE
+- ✅ Drag-and-drop works smoothly
+- ✅ Supported formats: images (PNG, JPG, WebP, GIF), PDFs, text files
+- ✅ Thumbnails display correctly for images
+- ✅ Files stored securely with hybrid storage approach
+- ✅ Square aspect ratio maintained for attachment nodes
+- ✅ Full integration with canvas interaction system
 
 ### 3.7 Undo/Redo Flow
 
@@ -341,8 +343,7 @@ Render canvas
 - Text input (auto-focused)
 - Placeholder: "Type your idea and press Enter..."
 - Shows current brain dump name
-- Attachment section (appears when files added)
-- Drag-and-drop zone for files
+- Canvas accepts drag-and-drop for files (creates attachment ideas directly)
 
 ### 4.2 Brain Dump Management
 
@@ -418,9 +419,10 @@ Render canvas
 **Display States**:
 
 **Compact View** (default):
-- Size: 150-300px wide, 60-120px tall
-- Content: Summary (if available) or truncated text
-- Max 50 characters, 2 lines
+- **Text Ideas**: 150-300px wide, 60-120px tall with summary/truncated text
+- **Attachment Ideas**: Square nodes (200x200px default) with file previews
+- Content: Summary (if available) or truncated text, or file preview with description
+- Max 50 characters, 2 lines for text display
 - Style: white/dark gray background, subtle border, rounded corners
 - No shadow in default state
 
@@ -778,11 +780,13 @@ Render canvas
 | Operation | Target | Max Acceptable |
 |-----------|--------|----------------|
 | Idea creation (UI) | <100ms | 200ms |
+| File upload & attachment creation | <2s | 5s |
 | Canvas pan/zoom | 60 FPS | 30 FPS |
 | Brain dump switch | <1s | 2s |
 | Summarization | <3s | 5s |
 | Embedding generation | <2s | 5s |
 | Database query | <200ms | 500ms |
+| Thumbnail generation | <500ms | 1s |
 
 ### 7.2 Scalability
 

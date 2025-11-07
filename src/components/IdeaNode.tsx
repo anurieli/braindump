@@ -37,6 +37,8 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const touchedNodesInConnection = useStore(state => state.touchedNodesInConnection);
   const edges = useStore(state => state.edges);
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId);
+  const draggedIdeaId = useStore(state => state.draggedIdeaId);
+  const dragHoverTargetId = useStore(state => state.dragHoverTargetId);
   
   const updateIdeaPosition = useStore(state => state.updateIdeaPosition);
   const openModal = useStore(state => state.openModal);
@@ -51,10 +53,14 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const addEdge = useStore(state => state.addEdge);
   const updateIdeaDimensions = useStore(state => state.updateIdeaDimensions);
   const deleteEdge = useStore(state => state.deleteEdge);
+  const setDraggedIdeaId = useStore(state => state.setDraggedIdeaId);
+  const setDragHoverTargetId = useStore(state => state.setDragHoverTargetId);
   
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [glowOpacity, setGlowOpacity] = useState(() => computeInitialGlowOpacity(idea.created_at));
+  // Check if this idea is the current drag hover target
+  const isDraggedOver = dragHoverTargetId === idea.id;
   const dragStartRef = useRef({ x: 0, y: 0, ideaX: idea.position_x, ideaY: idea.position_y });
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const lastClickTimeRef = useRef(0);
@@ -213,6 +219,8 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     
     // Start dragging
     setIsDragging(true);
+    setDraggedIdeaId(idea.id);
+    console.log('🚀 Started dragging idea:', idea.id);
     dragStartRef.current = {
       x: e.clientX,
       y: e.clientY,
@@ -283,10 +291,64 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         const newY = dragStartRef.current.ideaY + dy;
         updateIdeaPosition(idea.id, { x: newX, y: newY });
       }
+      
+      // Check if we're dragging over other ideas for edge creation
+      if (draggedIdeaId === idea.id) {
+        // Find all idea elements that might be under the mouse cursor
+        const elementsUnderMouse = document.elementsFromPoint(e.clientX, e.clientY);
+        const ideaElementUnderMouse = elementsUnderMouse.find((el) => {
+          const element = el as HTMLElement;
+          return element.dataset?.ideaId && element.dataset.ideaId !== idea.id;
+        });
+        
+        if (ideaElementUnderMouse) {
+          const targetIdeaId = (ideaElementUnderMouse as HTMLElement).dataset.ideaId;
+          console.log(`🎯 Dragging ${idea.id} over ${targetIdeaId}`);
+          setDragHoverTargetId(targetIdeaId || null);
+        } else {
+          setDragHoverTargetId(null);
+        }
+      }
     };
 
     const handleDocumentMouseUp = () => {
       setIsDragging(false);
+      
+      // Check if we're dropping this idea onto another idea for edge creation
+      if (draggedIdeaId === idea.id && dragHoverTargetId) {
+        const sourceId = draggedIdeaId;
+        const targetId = dragHoverTargetId;
+        
+        // Only create edge if we're dropping onto a different idea
+        if (sourceId !== targetId) {
+          try {
+            // Check if edge already exists before creating
+            const existingEdge = Object.values(edges).find(
+              edge => edge.brain_dump_id === currentBrainDumpId && 
+                      edge.parent_id === sourceId && 
+                      edge.child_id === targetId
+            );
+            
+            if (existingEdge) {
+              // Delete existing edge
+              deleteEdge(existingEdge.id);
+              console.log(`🗑️ Deleted edge from ${sourceId} to ${targetId}`);
+            } else {
+              // Create new edge from source to target
+              addEdge(sourceId, targetId, 'related_to');
+              console.log(`✅ Created edge from ${sourceId} to ${targetId}`);
+            }
+          } catch (error) {
+            console.error('Failed to create/delete edge:', error);
+          }
+        }
+      }
+      
+      // Clear drag state if this was the dragged idea
+      if (draggedIdeaId === idea.id) {
+        setDraggedIdeaId(null);
+        setDragHoverTargetId(null);
+      }
     };
 
     document.addEventListener('mousemove', handleDocumentMouseMove);
@@ -296,7 +358,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
       document.removeEventListener('mousemove', handleDocumentMouseMove);
       document.removeEventListener('mouseup', handleDocumentMouseUp);
     };
-  }, [isDragging, viewport.zoom, idea.id, updateIdeaPosition, isSelected, selectedIdeaIds]);
+  }, [isDragging, viewport.zoom, idea.id, updateIdeaPosition, isSelected, selectedIdeaIds, draggedIdeaId, dragHoverTargetId, setDraggedIdeaId, setDragHoverTargetId, edges, currentBrainDumpId, addEdge, deleteEdge]);
   
   const handleConnectionHandleMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -314,18 +376,22 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true);
+    
     // During connection creation, notify the store that we're hovering this node
     if (isCreatingConnection && connectionSourceId !== idea.id) {
       setHoveredNodeId(idea.id);
     }
+    
   }, [isCreatingConnection, connectionSourceId, idea.id, setHoveredNodeId]);
   
   const handleMouseLeave = useCallback(() => {
     setIsHovered(false);
+    
     // Clear hover state when leaving during connection creation
     if (isCreatingConnection && connectionSourceId !== idea.id) {
       setHoveredNodeId(null);
     }
+    
   }, [isCreatingConnection, connectionSourceId, idea.id, setHoveredNodeId]);
   
   // Display logic: show summary as main text if available, otherwise show original text
@@ -333,19 +399,28 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const mainText = hasValidSummary ? idea.summary ?? '' : idea.text ?? '';
   const displayText = mainText.length > 100 ? mainText.substring(0, 100) + '...' : mainText;
 
-  const baseBorder = isSelected ? '4px solid #3b82f6' : '2px solid rgba(156, 163, 175, 0.5)';
+  const baseBorder = isSelected ? '4px solid #3b82f6' 
+    : isDraggedOver ? '3px solid #10b981' 
+    : '2px solid rgba(156, 163, 175, 0.5)';
+  
   const glowShadow = glowOpacity > 0
     ? `0 0 0 4px rgba(59, 130, 246, ${0.18 * glowOpacity}), 0 0 20px rgba(59, 130, 246, ${0.45 * glowOpacity})`
     : undefined;
   const selectionShadow = isSelected
     ? '0 0 20px rgba(59, 130, 246, 0.6), 0 10px 15px -3px rgba(0, 0, 0, 0.1)'
     : undefined;
-  const combinedShadow = [selectionShadow, glowShadow].filter(Boolean).join(', ') || undefined;
+  const dragOverShadow = isDraggedOver
+    ? '0 0 20px rgba(16, 185, 129, 0.6), 0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+    : undefined;
+  const combinedShadow = [selectionShadow, dragOverShadow, glowShadow].filter(Boolean).join(', ') || undefined;
+  
   const backgroundStyle = isSelected
     ? 'rgba(59, 130, 246, 0.05)'
-    : glowOpacity > 0
-      ? `rgba(59, 130, 246, ${0.08 * glowOpacity})`
-      : undefined;
+    : isDraggedOver
+      ? 'rgba(16, 185, 129, 0.05)'
+      : glowOpacity > 0
+        ? `rgba(59, 130, 246, ${0.08 * glowOpacity})`
+        : undefined;
 
   // Render AttachmentNode for attachment type ideas
   if (idea.type === 'attachment') {
@@ -356,6 +431,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     <div
       className="absolute select-none"
       ref={nodeRef}
+      data-idea-id={idea.id}
       style={{
         left: idea.position_x,
         top: idea.position_y,

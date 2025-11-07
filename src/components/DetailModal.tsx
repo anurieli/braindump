@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useStore } from '@/store';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
-import { X, Edit2, Trash2 } from 'lucide-react';
-import { getThemeTextColor } from '@/lib/themes';
+import { X, Edit2, Trash2, Download } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import type { Attachment } from '@/types';
 
 export default function DetailModal() {
   const activeModal = useStore(state => state.activeModal);
@@ -15,7 +16,6 @@ export default function DetailModal() {
   const updateIdeaText = useStore(state => state.updateIdeaText);
   const deleteIdea = useStore(state => state.deleteIdea);
   const selectIdea = useStore(state => state.selectIdea);
-  const theme = useStore(state => state.theme);
   
   // Use stable selectors to avoid infinite loops
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId);
@@ -24,6 +24,9 @@ export default function DetailModal() {
   
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState('');
+  const [attachmentData, setAttachmentData] = useState<Attachment | null>(null);
+  const [isAttachmentLoading, setIsAttachmentLoading] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   
   const isOpen = activeModal === 'idea-details' && selectedIdeaId !== null;
   
@@ -32,6 +35,52 @@ export default function DetailModal() {
     return selectedIdeaId ? ideas[selectedIdeaId] : null;
   }, [ideas, selectedIdeaId]);
   
+  useEffect(() => {
+    if (!isOpen || !idea || idea.type !== 'attachment') {
+      setAttachmentData(null);
+      setAttachmentError(null);
+      setIsAttachmentLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsAttachmentLoading(true);
+    setAttachmentError(null);
+
+    const loadAttachment = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('attachments')
+          .select('*')
+          .eq('idea_id', idea.id)
+          .single();
+
+        if (error) {
+          throw error;
+        }
+
+        if (!isCancelled) {
+          setAttachmentData(data);
+        }
+      } catch (error) {
+        console.error('Failed to load attachment for modal:', error);
+        if (!isCancelled) {
+          setAttachmentError('Unable to load attachment');
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsAttachmentLoading(false);
+        }
+      }
+    };
+
+    loadAttachment();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [idea?.id, idea?.type, isOpen]);
+
   // Get parent and child edges for this idea
   const { parents, children } = useMemo(() => {
     if (!idea || !currentBrainDumpId) {
@@ -60,8 +109,11 @@ export default function DetailModal() {
   }, [edges, ideas, idea, currentBrainDumpId]);
   
   if (!isOpen || !idea) return null;
-  
-  const textColor = getThemeTextColor(theme);
+
+  const ideaMetadata = idea.metadata as Record<string, unknown> | undefined;
+  const ideaPreviewUrl = typeof ideaMetadata?.['previewUrl'] === 'string' ? ideaMetadata?.['previewUrl'] : undefined;
+  const ideaThumbnailUrl = typeof ideaMetadata?.['thumbnailUrl'] === 'string' ? ideaMetadata?.['thumbnailUrl'] : undefined;
+  const attachmentUrl = attachmentData?.metadata?.previewUrl || attachmentData?.url || ideaPreviewUrl || ideaThumbnailUrl;
 
   const handleSave = () => {
     if (editedText.trim()) {
@@ -95,6 +147,16 @@ export default function DetailModal() {
         
         {/* Header with icon controls */}
         <div className="flex items-center justify-end gap-2 p-4 pb-3 border-b border-current/10">
+          {idea.type === 'attachment' && attachmentUrl && (
+            <Button
+              onClick={() => window.open(attachmentUrl, '_blank')}
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+          )}
           <Button
             onClick={() => {
               setEditedText(idea.text);
@@ -126,6 +188,29 @@ export default function DetailModal() {
 
         {/* Main content area */}
         <div className="overflow-y-auto p-6 pt-4 pb-20" style={{ maxHeight: 'calc(85vh - 120px)' }}>
+          {idea.type === 'attachment' && (
+            <div className="mb-6">
+              <div className="relative w-full max-h-[60vh] rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center">
+                {isAttachmentLoading && (
+                  <div className="absolute inset-0 animate-pulse bg-gray-200" />
+                )}
+                {attachmentError && (
+                  <p className="text-sm text-red-500 px-4 text-center z-10">{attachmentError}</p>
+                )}
+                {!isAttachmentLoading && !attachmentError && attachmentUrl && (
+                  <img
+                    src={attachmentUrl}
+                    alt={attachmentData?.filename || idea.text}
+                    className="max-h-[60vh] w-full object-contain"
+                  />
+                )}
+                {!isAttachmentLoading && !attachmentError && !attachmentUrl && (
+                  <p className="text-sm opacity-60 px-4 text-center">No preview available</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Idea content - centered and prominent */}
           <div className="mb-6">
             {isEditing ? (

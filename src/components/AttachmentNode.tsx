@@ -2,11 +2,10 @@
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
 import { useStore } from '@/store';
-import { getThemeTextColor } from '@/lib/themes';
 import { getFileTypeCategory } from '@/lib/file-upload';
 import { supabase } from '@/lib/supabase';
 import type { IdeaDB, Attachment } from '@/types';
-import { Paperclip, Move, FileText, Image, FileIcon, Download } from 'lucide-react';
+import { Move, Image, FileIcon } from 'lucide-react';
 
 interface AttachmentNodeProps {
   idea: IdeaDB;
@@ -14,7 +13,6 @@ interface AttachmentNodeProps {
 }
 
 export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps) {
-  const theme = useStore(state => state.theme);
   const selectedIdeaIds = useStore(state => state.selectedIdeaIds);
   const viewport = useStore(state => state.viewport);
   const isCreatingConnection = useStore(state => state.isCreatingConnection);
@@ -44,21 +42,71 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
   const [imageError, setImageError] = useState(false);
   const [attachmentData, setAttachmentData] = useState<Attachment | null>(attachment || null);
   const [loadingAttachment, setLoadingAttachment] = useState(!attachment);
+  const [isResizing, setIsResizing] = useState(false);
   
   const dragStartRef = useRef({ x: 0, y: 0, ideaX: idea.position_x, ideaY: idea.position_y });
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const lastClickTimeRef = useRef(0);
   const nodeRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const resizeStartRef = useRef({ x: 0, y: 0, width: idea.width || 320, height: idea.height || 240 });
   
   const isSelected = selectedIdeaIds.has(idea.id);
   const isConnectionSource = connectionSourceId === idea.id;
-  const textColor = getThemeTextColor(theme);
-  
-  // Force square aspect ratio for attachment nodes
-  const size = Math.max(idea.width || 200, idea.height || 200);
-  const width = size;
-  const height = size;
+  const MIN_DIMENSION = 120;
+  const MAX_DIMENSION = 800;
+
+  const clampWidthForAspect = useCallback((targetWidth: number, ratio: number | null) => {
+    if (!Number.isFinite(targetWidth) || targetWidth <= 0) {
+      return MIN_DIMENSION;
+    }
+
+    let widthValue = targetWidth;
+
+    if (ratio && ratio > 0) {
+      const maxWidthForHeight = MAX_DIMENSION * ratio;
+      if (widthValue > maxWidthForHeight) {
+        widthValue = maxWidthForHeight;
+      }
+
+      const minWidthForMinHeight = MIN_DIMENSION * ratio;
+      if (minWidthForMinHeight <= MAX_DIMENSION) {
+        widthValue = Math.max(widthValue, minWidthForMinHeight);
+      }
+    }
+
+    widthValue = Math.min(MAX_DIMENSION, Math.max(MIN_DIMENSION, widthValue));
+    return widthValue;
+  }, [MAX_DIMENSION, MIN_DIMENSION]);
+
+  // Load attachment data if not provided
+
+  const metadata = (attachmentData?.metadata || idea.metadata || {}) as Record<string, unknown> & {
+    width?: number;
+    height?: number;
+    mimeType?: string;
+    thumbnailUrl?: string;
+  };
+
+  const initialAspectRatio = (() => {
+    const metaWidth = typeof metadata.width === 'number' ? metadata.width : undefined;
+    const metaHeight = typeof metadata.height === 'number' ? metadata.height : undefined;
+    if (metaWidth && metaHeight && metaHeight > 0) {
+      return metaWidth / metaHeight;
+    }
+    if (idea.width && idea.height && idea.height > 0) {
+      return idea.width / idea.height;
+    }
+    return 1;
+  })();
+
+  const [aspectRatio, setAspectRatio] = useState<number>(initialAspectRatio);
+
+  useEffect(() => {
+    if (!imageLoaded && initialAspectRatio > 0 && Math.abs(initialAspectRatio - aspectRatio) > 0.01 && !isResizing) {
+      setAspectRatio(initialAspectRatio);
+    }
+  }, [initialAspectRatio, aspectRatio, isResizing, imageLoaded]);
 
   // Load attachment data if not provided
   useEffect(() => {
@@ -87,13 +135,24 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
     }
   }, [idea.id, idea.type, attachmentData, loadingAttachment]);
 
-  // Get attachment metadata
   const currentAttachment = attachmentData || attachment;
-  const metadata = currentAttachment?.metadata || idea.metadata || {};
+
+  useEffect(() => {
+    setImageLoaded(false);
+    setImageError(false);
+  }, [currentAttachment?.url]);
   const fileType = currentAttachment?.type || 'file';
   const filename = currentAttachment?.filename || idea.text;
-  const mimeType = metadata.mimeType as string;
+  const mimeType = metadata.mimeType;
   const fileCategory = mimeType ? getFileTypeCategory(mimeType) : 'unknown';
+
+  const hasAspectRatio = Number.isFinite(aspectRatio) && aspectRatio > 0;
+  const canResize = fileCategory === 'image' && hasAspectRatio;
+  const computedWidth = idea.width ?? clampWidthForAspect(typeof metadata.width === 'number' ? metadata.width : 320, hasAspectRatio ? aspectRatio : 1);
+  const fallbackHeight = hasAspectRatio ? computedWidth / aspectRatio : (typeof metadata.height === 'number' ? metadata.height : computedWidth);
+  const baseHeight = idea.height ?? fallbackHeight;
+  const width = Math.max(MIN_DIMENSION, Math.min(MAX_DIMENSION, computedWidth));
+  const height = canResize && aspectRatio > 0 ? width / aspectRatio : Math.max(MIN_DIMENSION, Math.min(MAX_DIMENSION, baseHeight));
 
   // Keep idea dimensions in sync with rendered size (maintain square)
   useLayoutEffect(() => {
@@ -104,17 +163,13 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
       const rect = element.getBoundingClientRect();
       const measuredWidth = rect.width / viewport.zoom;
       const measuredHeight = rect.height / viewport.zoom;
-      
-      // Always use the larger dimension to maintain square
-      const newSize = Math.max(measuredWidth, measuredHeight);
-      const storedSize = Math.max(idea.width ?? newSize, idea.height ?? newSize);
-      
-      const sizeDiff = Math.abs(newSize - storedSize);
+      const widthDiff = Math.abs(measuredWidth - (idea.width ?? measuredWidth));
+      const heightDiff = Math.abs(measuredHeight - (idea.height ?? measuredHeight));
 
-      if (sizeDiff > 0.5) {
+      if (!isResizing && (widthDiff > 2 || heightDiff > 2)) {
         updateIdeaDimensions(idea.id, {
-          width: Number(newSize.toFixed(2)),
-          height: Number(newSize.toFixed(2)),
+          width: Number(measuredWidth.toFixed(2)),
+          height: Number(measuredHeight.toFixed(2)),
         });
       }
     };
@@ -130,7 +185,7 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
     return () => {
       observer.disconnect();
     };
-  }, [idea.id, idea.width, idea.height, updateIdeaDimensions, viewport.zoom]);
+  }, [idea.id, idea.width, idea.height, updateIdeaDimensions, viewport.zoom, isResizing]);
   
   // Handle edge creation/deletion when this node is hovered during connection
   useEffect(() => {
@@ -287,31 +342,87 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
     }
   }, [isCreatingConnection, connectionSourceId, idea.id, setHoveredNodeId]);
 
-  const handleFileDownload = useCallback(() => {
-    if (currentAttachment?.url) {
-      window.open(currentAttachment.url, '_blank');
-    }
-  }, [currentAttachment?.url]);
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!canResize) return;
+    e.stopPropagation();
+    e.preventDefault();
+    setIsResizing(true);
+    resizeStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      width,
+      height,
+    };
+  }, [width, height, canResize]);
+
+  useEffect(() => {
+    if (!isResizing || !canResize) return;
+
+    const handleResizeMove = (e: MouseEvent) => {
+      const dx = (e.clientX - resizeStartRef.current.x) / viewport.zoom;
+      const dy = (e.clientY - resizeStartRef.current.y) / viewport.zoom;
+      const diagonalDelta = (dx + dy) / 2;
+
+      const proposedWidth = resizeStartRef.current.width + diagonalDelta;
+      const clampedWidth = clampWidthForAspect(proposedWidth, aspectRatio);
+      const clampedHeight = clampedWidth / aspectRatio;
+      updateIdeaDimensions(idea.id, {
+        width: Number(clampedWidth.toFixed(2)),
+        height: Number(clampedHeight.toFixed(2)),
+      });
+    };
+
+    const handleResizeUp = () => {
+      setIsResizing(false);
+    };
+
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleResizeMove);
+      document.removeEventListener('mouseup', handleResizeUp);
+    };
+  }, [isResizing, viewport.zoom, clampWidthForAspect, aspectRatio, idea.id, updateIdeaDimensions, canResize]);
 
   // Render file preview based on type
   const renderFilePreview = () => {
     if (fileCategory === 'image' && currentAttachment?.url) {
       return (
-        <div className="w-full h-32 mb-2 bg-gray-100 rounded overflow-hidden flex items-center justify-center">
+        <div className="relative w-full h-full overflow-hidden rounded-md">
           {!imageLoaded && !imageError && (
-            <div className="animate-pulse bg-gray-200 w-full h-full flex items-center justify-center">
+            <div className="absolute inset-0 animate-pulse bg-gray-200 flex items-center justify-center">
               <Image className="h-8 w-8 text-gray-400" />
             </div>
           )}
           <img
-            src={metadata.thumbnailUrl || currentAttachment.url}
+            src={metadata.thumbnailUrl ?? currentAttachment.url}
             alt={filename}
-            className={`max-w-full max-h-full object-cover ${imageLoaded ? 'block' : 'hidden'}`}
-            onLoad={() => setImageLoaded(true)}
+            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-200 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+            onLoad={(event) => {
+              setImageLoaded(true);
+              setImageError(false);
+              const naturalWidth = event.currentTarget.naturalWidth;
+              const naturalHeight = event.currentTarget.naturalHeight;
+              if (naturalWidth && naturalHeight) {
+                const ratio = naturalWidth / naturalHeight;
+                setAspectRatio(ratio);
+                const clampedWidth = clampWidthForAspect(naturalWidth, ratio);
+                const clampedHeight = clampedWidth / ratio;
+                const widthDiff = Math.abs((idea.width ?? 0) - clampedWidth);
+                const heightDiff = Math.abs((idea.height ?? 0) - clampedHeight);
+                if (widthDiff > 2 || heightDiff > 2) {
+                  updateIdeaDimensions(idea.id, {
+                    width: Number(clampedWidth.toFixed(2)),
+                    height: Number(clampedHeight.toFixed(2)),
+                  });
+                }
+              }
+            }}
             onError={() => setImageError(true)}
           />
           {imageError && (
-            <div className="w-full h-full flex items-center justify-center bg-gray-50">
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
               <Image className="h-8 w-8 text-gray-400" />
             </div>
           )}
@@ -321,24 +432,26 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
 
     // File type icons for non-images
     const getFileIcon = () => {
-      switch (fileCategory) {
-        case 'pdf':
-          return <FileText className="h-12 w-12 text-red-500" />;
-        case 'document':
-          return <FileText className="h-12 w-12 text-blue-500" />;
-        default:
-          return <FileIcon className="h-12 w-12 text-gray-500" />;
+      const baseClass = 'h-12 w-12';
+      if (fileCategory === 'pdf') {
+        return <FileIcon className={`${baseClass} text-red-500`} />;
       }
+      if (fileCategory === 'document') {
+        return <FileIcon className={`${baseClass} text-blue-500`} />;
+      }
+      return <FileIcon className={`${baseClass} text-gray-500`} />;
     };
 
     return (
-      <div className="w-full h-32 mb-2 bg-gray-50 rounded flex items-center justify-center">
+      <div className="w-full h-full flex items-center justify-center bg-gray-50 rounded-md">
         {getFileIcon()}
       </div>
     );
   };
 
   const displayText = idea.text.length > 50 ? idea.text.substring(0, 50) + '...' : idea.text;
+  const shouldShowCaption = idea.text && idea.text.trim() !== '' && idea.text.trim() !== filename?.trim();
+  const cursorStyle = isResizing ? 'nwse-resize' : isDragging ? 'grabbing' : isHovered ? 'grab' : 'pointer';
   
   return (
     <div
@@ -351,7 +464,7 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
         height,
         transform: 'translate(-50%, -50%)',
         pointerEvents: 'auto',
-        cursor: isDragging ? 'grabbing' : isHovered ? 'grab' : 'pointer',
+        cursor: cursorStyle,
         zIndex: 1,
       }}
       onMouseEnter={handleMouseEnter}
@@ -361,7 +474,7 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
       <div 
         ref={contentRef}
         className={`
-          relative liquid-glass rounded-lg p-3 h-full transition-all hover:shadow-xl
+          relative liquid-glass rounded-lg h-full transition-all overflow-hidden
           ${isConnectionSource ? 'ring-2 ring-blue-400' : ''}
         `}
         style={{
@@ -370,48 +483,34 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
           background: isSelected ? 'rgba(59, 130, 246, 0.05)' : undefined,
         }}
       >
+        {/* File Preview */}
+        {renderFilePreview()}
+
+        {shouldShowCaption && (
+          <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs px-3 py-2 truncate">
+            {displayText}
+          </div>
+        )}
+
         {/* Connection handle in center */}
         {isHovered && (
           <div
-            className="connection-handle absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center z-50 cursor-crosshair hover:scale-110 transition-transform shadow-lg"
+            className="connection-handle absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center z-40 cursor-crosshair hover:scale-110 transition-transform shadow-lg"
             onMouseDown={handleConnectionHandleMouseDown}
             onMouseEnter={(e) => e.stopPropagation()}
           >
             <Move className="h-5 w-5 text-white" />
           </div>
         )}
-        
-        {/* File Preview */}
-        {renderFilePreview()}
-        
-        {/* File Info */}
-        <div className="flex items-center justify-between mb-2">
-          <Paperclip className="h-4 w-4 text-gray-500 flex-shrink-0" />
-          {currentAttachment?.url && (
-            <button
-              onClick={handleFileDownload}
-              className="p-1 hover:bg-gray-100 rounded transition-colors"
-              title="Download file"
-            >
-              <Download className="h-3 w-3 text-gray-500" />
-            </button>
-          )}
-        </div>
-        
-        {/* Filename */}
-        <p className="text-xs font-medium break-words mb-1">{filename}</p>
-        
-        {/* Description */}
-        {idea.text !== filename && (
-          <p className="text-xs opacity-75 break-words">{displayText}</p>
-        )}
-        
-        {/* File metadata */}
-        {metadata.fileSize && (
-          <div className="mt-2 pt-2 border-t border-current/10">
-            <p className="text-xs opacity-50">
-              {Math.round(metadata.fileSize / 1024)} KB
-            </p>
+
+        {/* Resize handle */}
+        {canResize && (
+          <div
+            className="absolute bottom-2 right-2 h-5 w-5 rounded-full bg-white/80 border border-gray-300 flex items-center justify-center cursor-nwse-resize shadow-sm"
+            onMouseDown={handleResizeMouseDown}
+            onMouseEnter={(e) => e.stopPropagation()}
+          >
+            <div className="w-2.5 h-2.5 border-r-2 border-b-2 border-gray-400" />
           </div>
         )}
       </div>

@@ -29,6 +29,10 @@ export interface UiSlice {
   connectionStartPosition: { x: number; y: number } | null
   hoveredNodeId: string | null
   touchedNodesInConnection: Set<string>
+  
+  // Drag state
+  draggedIdeaId: string | null
+  dragHoverTargetId: string | null
 
   // Performance settings
   enableAnimations: boolean
@@ -69,6 +73,10 @@ export interface UiSlice {
   addTouchedNodeInConnection: (id: string) => void
   clearTouchedNodesInConnection: () => void
   
+  // Drag actions
+  setDraggedIdeaId: (id: string | null) => void
+  setDragHoverTargetId: (id: string | null) => void
+  
   // Keyboard shortcuts
   setShortcutPressed: (key: string, pressed: boolean) => void
   
@@ -105,6 +113,10 @@ export const createUiSlice: StateCreator<
   connectionStartPosition: null,
   hoveredNodeId: null,
   touchedNodesInConnection: new Set<string>(),
+  
+  // Drag state
+  draggedIdeaId: null,
+  dragHoverTargetId: null,
 
   // Performance settings
   enableAnimations: true,
@@ -270,6 +282,15 @@ export const createUiSlice: StateCreator<
   
   clearTouchedNodesInConnection: () => {
     set({ touchedNodesInConnection: new Set<string>() })
+  },
+
+  // Drag actions
+  setDraggedIdeaId: (id: string | null) => {
+    set({ draggedIdeaId: id })
+  },
+
+  setDragHoverTargetId: (id: string | null) => {
+    set({ dragHoverTargetId: id })
   },
 
   // Keyboard shortcuts

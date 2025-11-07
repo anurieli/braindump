@@ -56,6 +56,11 @@ export async function generateThumbnail(file: File, maxSize: number = 200): Prom
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
     const img = new Image()
+    const blobUrl = URL.createObjectURL(file)
+
+    const cleanup = () => {
+      URL.revokeObjectURL(blobUrl)
+    }
 
     img.onload = () => {
       // Calculate thumbnail dimensions
@@ -77,18 +82,23 @@ export async function generateThumbnail(file: File, maxSize: number = 200): Prom
       // Draw thumbnail
       ctx?.drawImage(img, 0, 0, thumbWidth, thumbHeight)
       
-      // Convert to blob and create URL
-      canvas.toBlob((blob) => {
-        if (blob) {
-          resolve(URL.createObjectURL(blob))
-        } else {
-          resolve(null)
-        }
-      }, 'image/jpeg', 0.8)
+      // Convert to base64 data URL instead of blob URL
+      try {
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
+        cleanup()
+        resolve(dataUrl)
+      } catch (error) {
+        cleanup()
+        resolve(null)
+      }
     }
 
-    img.onerror = () => resolve(null)
-    img.src = URL.createObjectURL(file)
+    img.onerror = () => {
+      cleanup()
+      resolve(null)
+    }
+    
+    img.src = blobUrl
   })
 }
 
@@ -102,13 +112,23 @@ export async function getImageDimensions(file: File): Promise<{ width: number; h
 
   return new Promise((resolve) => {
     const img = new Image()
+    const blobUrl = URL.createObjectURL(file)
+    
+    const cleanup = () => {
+      URL.revokeObjectURL(blobUrl)
+    }
     
     img.onload = () => {
+      cleanup()
       resolve({ width: img.naturalWidth, height: img.naturalHeight })
     }
     
-    img.onerror = () => resolve(null)
-    img.src = URL.createObjectURL(file)
+    img.onerror = () => {
+      cleanup()
+      resolve(null)
+    }
+    
+    img.src = blobUrl
   })
 }
 
@@ -183,7 +203,7 @@ export async function uploadFile(file: File): Promise<FileUploadResult> {
     const filename = `${timestamp}_${randomString}.${fileExtension}`
 
     // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from(STORAGE_BUCKET)
       .upload(filename, file, {
         cacheControl: '3600',

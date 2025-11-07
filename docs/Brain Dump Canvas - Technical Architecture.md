@@ -97,7 +97,7 @@ CREATE TABLE brain_dumps (
 
 CREATE INDEX idx_brain_dumps_archived ON brain_dumps(archived_at);
 
--- Ideas (Nodes on Canvas)
+-- Ideas (Nodes on Canvas - Text and Attachment types)
 CREATE TABLE ideas (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   brain_dump_id UUID NOT NULL REFERENCES brain_dumps(id) ON DELETE CASCADE,
@@ -107,16 +107,19 @@ CREATE TABLE ideas (
   position_y FLOAT NOT NULL,
   width FLOAT DEFAULT 200,
   height FLOAT DEFAULT 100,
+  type VARCHAR(20) NOT NULL DEFAULT 'text',  -- NEW: 'text' or 'attachment'
   state VARCHAR(20) DEFAULT 'generating',
   session_id UUID,
   embedding vector(1536),
   metadata JSONB DEFAULT '{}',
   created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
+  updated_at TIMESTAMP DEFAULT NOW(),
+  CONSTRAINT ideas_type_valid CHECK (type IN ('text', 'attachment'))
 );
 
 CREATE INDEX idx_ideas_brain_dump ON ideas(brain_dump_id);
 CREATE INDEX idx_ideas_state ON ideas(state);
+CREATE INDEX idx_ideas_type ON ideas(type);  -- NEW: Index on idea type
 CREATE INDEX idx_ideas_session ON ideas(session_id);
 CREATE INDEX idx_ideas_spatial ON ideas USING gist (point(position_x, position_y));
 CREATE INDEX idx_ideas_embedding ON ideas USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
@@ -156,14 +159,14 @@ INSERT INTO edge_types (name, is_default) VALUES
   ('similar_to', true),
   ('depends_on', true);
 
--- Attachments (Files, URLs)
+-- Attachments (Files for Attachment Ideas)
 CREATE TABLE attachments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   idea_id UUID NOT NULL REFERENCES ideas(id) ON DELETE CASCADE,
-  type VARCHAR(20) NOT NULL,
-  url TEXT NOT NULL,
+  type VARCHAR(20) NOT NULL,  -- 'image', 'pdf', 'file'
+  url TEXT NOT NULL,  -- Supabase Storage URL or base64 data URL
   filename TEXT,
-  metadata JSONB DEFAULT '{}',
+  metadata JSONB DEFAULT '{}',  -- fileSize, mimeType, width, height, thumbnailUrl, isBase64
   created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -218,13 +221,14 @@ POST   /api/brain-dumps/:id/duplicate - Duplicate brain dump
 **Ideas**
 ```
 GET    /api/brain-dumps/:id/ideas    - Get all ideas in brain dump
-POST   /api/ideas                    - Create new idea
+POST   /api/ideas                    - Create new idea (text or attachment)
 GET    /api/ideas/:id                - Get idea details
 PATCH  /api/ideas/:id                - Update idea (text, position, etc.)
 DELETE /api/ideas/:id                - Delete idea
 GET    /api/ideas/:id/similar        - Find similar ideas (embeddings)
 GET    /api/ideas/:id/children       - Get child ideas
 GET    /api/ideas/:id/parent         - Get parent idea
+POST   /api/ideas/attachment         - Create attachment idea with file upload
 ```
 
 **Edges**
@@ -236,11 +240,70 @@ GET    /api/edge-types               - Get all edge types
 POST   /api/edge-types               - Create custom edge type
 ```
 
-**Attachments**
+**Attachments & File Upload**
 ```
-POST   /api/attachments              - Upload attachment
-DELETE /api/attachments/:id          - Delete attachment
+POST   /api/attachments              - Upload attachment to Supabase Storage
+DELETE /api/attachments/:id          - Delete attachment and file
+POST   /api/upload                   - Multi-part file upload with validation
 ```
+
+---
+
+## Attachment System Architecture
+
+### File Upload Pipeline ✅ IMPLEMENTED
+
+The attachment system implements a hybrid storage approach that handles both Supabase Storage and base64 fallback:
+
+```typescript
+// File Upload Flow
+User drops file → Canvas.handleFileDrop() 
+→ FileDropModal (description input)
+→ Canvas.handleFileModalConfirm()
+→ ideasSlice.addAttachmentIdea()
+→ file-upload.uploadFile()
+→ Supabase Storage (preferred) OR base64 fallback
+→ AttachmentNode renders with preview
+```
+
+### Storage Strategy
+
+**Primary: Supabase Storage**
+- Public bucket: `attachments` 
+- CDN-delivered files for optimal performance
+- Proper file management with deletion capabilities
+
+**Fallback: Base64 Encoding (< 1MB files)**
+- Used when Supabase Storage policies aren't configured
+- Files stored as data URLs in database
+- Immediate functionality without external setup
+
+### Component Architecture
+
+```
+Canvas
+├── IdeaNode (type="text")
+│   └── Regular text idea UI
+└── IdeaNode (type="attachment") 
+    └── AttachmentNode
+        ├── File preview (image thumbnails or file icons)
+        ├── Download button
+        ├── Metadata display (filename, size)
+        └── All standard interactions (drag, select, connect)
+```
+
+### File Processing Features
+
+**Image Thumbnails**:
+- Client-side Canvas API processing
+- 200px max dimension with aspect ratio preservation
+- JPEG compression at 80% quality
+- Blob URL generation for display
+
+**File Type Detection**:
+- MIME type validation for security
+- Support for: images (PNG, JPG, WebP, GIF), PDFs, text files
+- Max file size: 10MB with user-friendly error messages
 
 ---
 

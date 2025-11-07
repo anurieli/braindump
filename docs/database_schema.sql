@@ -1,7 +1,7 @@
 -- Brain Dump Canvas - Database Schema
 -- PostgreSQL with pgvector extension
--- Version: 1.0
--- Last Updated: October 27, 2025
+-- Version: 1.1
+-- Last Updated: November 7, 2025
 
 -- ============================================
 -- EXTENSIONS
@@ -52,6 +52,9 @@ CREATE TABLE ideas (
   width FLOAT NOT NULL DEFAULT 200,
   height FLOAT NOT NULL DEFAULT 100,
   
+  -- Idea type: 'text' for regular ideas, 'attachment' for file-based ideas
+  type VARCHAR(20) NOT NULL DEFAULT 'text',
+  
   -- Processing state
   state VARCHAR(20) NOT NULL DEFAULT 'generating',
   
@@ -70,6 +73,7 @@ CREATE TABLE ideas (
   
   -- Constraints
   CONSTRAINT ideas_text_not_empty CHECK (LENGTH(TRIM(text)) > 0),
+  CONSTRAINT ideas_type_valid CHECK (type IN ('text', 'attachment')),
   CONSTRAINT ideas_state_valid CHECK (state IN ('generating', 'ready', 'error')),
   CONSTRAINT ideas_dimensions_positive CHECK (width > 0 AND height > 0)
 );
@@ -109,8 +113,8 @@ CREATE TABLE edge_types (
   CONSTRAINT edge_types_name_not_empty CHECK (LENGTH(TRIM(name)) > 0)
 );
 
--- Attachments (Files, URLs, Images)
--- Each attachment belongs to one idea
+-- Attachments (Files for Attachment Ideas)  
+-- Links attachment ideas to their file storage (Supabase Storage or base64)
 CREATE TABLE attachments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   idea_id UUID NOT NULL REFERENCES ideas(id) ON DELETE CASCADE,
@@ -118,13 +122,13 @@ CREATE TABLE attachments (
   -- Attachment type (image, pdf, url, file)
   type VARCHAR(20) NOT NULL,
   
-  -- Storage URL (Supabase Storage or external URL)
+  -- Storage URL (Supabase Storage public URL or base64 data URL)
   url TEXT NOT NULL,
   
-  -- Original filename (for downloads)
+  -- Original filename (for downloads and display)
   filename TEXT,
   
-  -- Flexible metadata (MIME type, size, dimensions, etc.)
+  -- File metadata: {fileSize, mimeType, width?, height?, thumbnailUrl?, isBase64?}
   metadata JSONB NOT NULL DEFAULT '{}',
   
   -- Timestamp
@@ -173,6 +177,7 @@ CREATE INDEX idx_brain_dumps_created ON brain_dumps(created_at DESC);
 -- Ideas
 CREATE INDEX idx_ideas_brain_dump ON ideas(brain_dump_id);
 CREATE INDEX idx_ideas_state ON ideas(state);
+CREATE INDEX idx_ideas_type ON ideas(type);
 CREATE INDEX idx_ideas_session ON ideas(session_id) WHERE session_id IS NOT NULL;
 CREATE INDEX idx_ideas_created ON ideas(created_at DESC);
 
@@ -374,11 +379,13 @@ COMMENT ON TABLE brain_dumps IS 'Isolated workspaces containing ideas and edges'
 COMMENT ON TABLE ideas IS 'Individual thought nodes positioned on the canvas';
 COMMENT ON TABLE edges IS 'Parent-child relationships between ideas';
 COMMENT ON TABLE edge_types IS 'User-customizable relationship type definitions';
-COMMENT ON TABLE attachments IS 'Files, URLs, and media attached to ideas';
+COMMENT ON TABLE attachments IS 'File storage references for attachment ideas (Supabase Storage + base64 fallback)';
 COMMENT ON TABLE ai_operations IS 'Log of all AI operations for monitoring and cost tracking';
 
 COMMENT ON COLUMN ideas.embedding IS 'OpenAI text-embedding-3-small vector (1536 dimensions) for semantic search';
-COMMENT ON COLUMN ideas.metadata IS 'Flexible JSON storage for word count, URLs, attachment info, etc.';
+COMMENT ON COLUMN ideas.metadata IS 'Flexible JSON storage for word count, URLs, file metadata for attachment ideas, etc.';
+COMMENT ON COLUMN ideas.type IS 'Idea type: text (regular text ideas) or attachment (file-based ideas)';
+COMMENT ON COLUMN attachments.metadata IS 'File metadata: {fileSize, mimeType, width, height, thumbnailUrl, isBase64}';
 COMMENT ON COLUMN ideas.state IS 'Processing state: generating (AI processing), ready (complete), error (failed)';
 COMMENT ON COLUMN ideas.session_id IS 'Groups ideas created in the same session for temporal analysis';
 
