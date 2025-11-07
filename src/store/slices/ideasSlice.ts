@@ -5,6 +5,7 @@ import { IdeaDB } from '@/types'
 type Idea = IdeaDB
 import { supabase } from '@/lib/supabase'
 import { generateEmbedding, generateSummary, cleanGrammar } from '@/lib/openai'
+import { uploadFile, validateFile } from '@/lib/file-upload'
 import { positionDebouncer } from '@/lib/debounce'
 import type { StoreState } from '../index'
 
@@ -18,6 +19,7 @@ export interface IdeasSlice {
   // Actions
   loadIdeas: (brainDumpId: string) => Promise<void>
   addIdea: (text: string, position: { x: number, y: number }) => Promise<string>
+  addAttachmentIdea: (file: File, position: { x: number, y: number }, description?: string) => Promise<string>
   updateIdeaText: (id: string, text: string) => Promise<void>
   updateIdeaPosition: (id: string, position: { x: number, y: number }) => void
   updateIdeaDimensions: (id: string, dimensions: { width: number, height: number }) => void
@@ -78,6 +80,7 @@ export const createIdeasSlice: StateCreator<
       position_y: position.y,
       width: 200,
       height: 100,
+      type: 'text',
       state: 'generating',
       metadata: {},
       created_at: new Date().toISOString(),
@@ -111,6 +114,7 @@ export const createIdeasSlice: StateCreator<
           position_y: position.y,
           width: 200,
           height: 100,
+          type: 'text',
           state: 'generating'
         }])
         .select()
@@ -155,6 +159,130 @@ export const createIdeasSlice: StateCreator<
         return { ideas: newIdeas, isProcessing: newProcessing }
       })
       throw error
+    }
+  },
+
+  addAttachmentIdea: async (file: File, position: { x: number, y: number }, description?: string) => {
+    // Validate file first
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+
+    // Optimistic update - create temporary attachment idea
+    const tempId = `temp-${Date.now()}`;
+    const defaultDescription = description || `📎 ${file.name}`;
+    const tempIdea: Idea = {
+      id: tempId,
+      brain_dump_id: '',
+      text: defaultDescription,
+      position_x: position.x,
+      position_y: position.y,
+      width: 200,
+      height: 200, // Square for attachments
+      type: 'attachment',
+      state: 'generating',
+      metadata: {
+        uploading: true,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type
+      },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    // Add to state immediately
+    set(state => ({
+      ideas: { ...state.ideas, [tempId]: tempIdea },
+      isProcessing: { ...state.isProcessing, [tempId]: true },
+      lastPlacedIdeaPosition: position
+    }));
+
+    try {
+      // Get current brain dump ID from store
+      const currentBrainDumpId = get().currentBrainDumpId;
+      if (!currentBrainDumpId) {
+        throw new Error('No brain dump selected');
+      }
+
+      // Upload file to storage
+      const uploadResult = await uploadFile(file);
+
+      // Insert attachment idea into database
+      const { data: ideaData, error: ideaError } = await supabase
+        .from('ideas')
+        .insert([{
+          brain_dump_id: currentBrainDumpId,
+          text: defaultDescription,
+          position_x: position.x,
+          position_y: position.y,
+          width: 200,
+          height: 200,
+          type: 'attachment',
+          state: 'generating',
+          metadata: {
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.type,
+            ...uploadResult.metadata
+          }
+        }])
+        .select()
+        .single();
+
+      if (ideaError) throw ideaError;
+      if (!ideaData) throw new Error('No idea data returned from insert');
+
+      // Insert attachment record
+      const { error: attachmentError } = await supabase
+        .from('attachments')
+        .insert([{
+          idea_id: ideaData.id,
+          type: validation.type || 'file',
+          url: uploadResult.url,
+          filename: uploadResult.filename,
+          metadata: uploadResult.metadata
+        }]);
+
+      if (attachmentError) throw attachmentError;
+
+      // Replace temp idea with real idea
+      set(state => {
+        const newIdeas = { ...state.ideas };
+        delete newIdeas[tempId];
+        newIdeas[ideaData.id] = {
+          ...ideaData,
+          state: 'ready'
+        };
+
+        const newProcessing = { ...state.isProcessing };
+        delete newProcessing[tempId];
+        newProcessing[ideaData.id] = false;
+
+        return {
+          ideas: newIdeas,
+          isProcessing: newProcessing,
+          lastPlacedIdeaPosition: { x: ideaData.position_x, y: ideaData.position_y }
+        };
+      });
+
+      // Refresh brain dump counts
+      if (get().refreshBrainDumpCounts) {
+        get().refreshBrainDumpCounts(currentBrainDumpId);
+      }
+
+      return ideaData.id;
+    } catch (error) {
+      // Remove temp idea on error
+      set(state => {
+        const newIdeas = { ...state.ideas };
+        delete newIdeas[tempId];
+        const newProcessing = { ...state.isProcessing };
+        delete newProcessing[tempId];
+        return { ideas: newIdeas, isProcessing: newProcessing };
+      });
+      throw error;
     }
   },
 

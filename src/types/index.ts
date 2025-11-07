@@ -69,8 +69,19 @@ export interface Attachment {
   type: 'image' | 'pdf' | 'url' | 'file' | 'text';
   url: string;
   filename?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: AttachmentMetadata;
   createdAt?: number;
+}
+
+export interface AttachmentMetadata {
+  fileSize?: number;
+  mimeType?: string;
+  width?: number;
+  height?: number;
+  thumbnailUrl?: string;
+  previewUrl?: string;
+  isBase64?: boolean;
+  [key: string]: unknown;
 }
 
 export interface Viewport {
@@ -118,6 +129,7 @@ export interface IdeaDB {
   position_y: number;
   width: number;
   height: number;
+  type: 'text' | 'attachment';
   state: 'generating' | 'ready' | 'error';
   session_id?: string;
   embedding?: number[];

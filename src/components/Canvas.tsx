@@ -1,15 +1,17 @@
 'use client'
 
-import { useRef, useEffect, useCallback, useMemo } from 'react';
+import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useStore } from '@/store';
 import { getThemeBackground } from '@/lib/themes';
 import { screenToCanvas, rectsIntersect, lineIntersectsRect } from '@/lib/geometry';
+import { validateFile, uploadFile } from '@/lib/file-upload';
 import IdeaNode from './IdeaNode';
 import EdgeRenderer from './EdgeRenderer';
 import ConnectionLine from './ConnectionLine';
 import DetailModal from './DetailModal';
 import BatchActions from './BatchActions';
+import FileDropModal from './FileDropModal';
 import type { InputBoxHandle } from './InputBox';
 
 interface CanvasProps {
@@ -67,6 +69,9 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const isBoxSelectingRef = useRef(false);
   const spacePressedRef = useRef(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [dragOverPosition, setDragOverPosition] = useState<{ x: number; y: number } | null>(null);
+  const [pendingFile, setPendingFile] = useState<{ file: File; position: { x: number; y: number } } | null>(null);
 
   const baseGridSize = 40;
   const scaledGridSize = baseGridSize * viewport.zoom;
@@ -259,6 +264,107 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
     }
   }, [toggleSidebar, currentBrainDump]);
 
+  // Handle drag and drop for files
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!currentBrainDump) return;
+    
+    // Check if drag contains files
+    const hasFiles = e.dataTransfer?.types.includes('Files');
+    if (hasFiles) {
+      setIsDragOver(true);
+      
+      // Calculate drop position in canvas coordinates
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const canvasPoint = screenToCanvas(
+          e.clientX - rect.left,
+          e.clientY - rect.top,
+          viewport.x,
+          viewport.y,
+          viewport.zoom
+        );
+        setDragOverPosition(canvasPoint);
+      }
+    }
+  }, [currentBrainDump, viewport]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only clear drag state if leaving the canvas entirely
+    if (!canvasRef.current?.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+      setDragOverPosition(null);
+    }
+  }, []);
+
+  const handleFileDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!currentBrainDump) return;
+    
+    setIsDragOver(false);
+    setDragOverPosition(null);
+    
+    const files = Array.from(e.dataTransfer.files);
+    
+    if (files.length === 0) return;
+    
+    // Calculate drop position
+    let dropPosition = { x: 0, y: 0 };
+    if (canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      dropPosition = screenToCanvas(
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+        viewport.x,
+        viewport.y,
+        viewport.zoom
+      );
+    }
+    
+    // For now, handle only the first file (show modal)
+    const file = files[0];
+    if (file) {
+      // Validate file
+      const validation = validateFile(file);
+      if (!validation.valid) {
+        console.error('File validation failed:', validation.error);
+        // TODO: Show error toast
+        return;
+      }
+      
+      // Show modal for description input
+      setPendingFile({ file, position: dropPosition });
+    }
+  }, [currentBrainDump, viewport]);
+
+  // Handle file drop modal confirmation
+  const handleFileModalConfirm = useCallback(async (description: string) => {
+    if (!pendingFile) return;
+    
+    try {
+      const addAttachmentIdea = useStore.getState().addAttachmentIdea;
+      if (addAttachmentIdea) {
+        await addAttachmentIdea(pendingFile.file, pendingFile.position, description);
+      }
+    } catch (error) {
+      console.error('File attachment error:', error);
+      // TODO: Show error toast
+    } finally {
+      setPendingFile(null);
+    }
+  }, [pendingFile]);
+
+  const handleFileModalCancel = useCallback(() => {
+    setPendingFile(null);
+  }, []);
+
   // Handle wheel (zoom) - must use native event listener with passive: false
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!currentBrainDump) return;
@@ -438,6 +544,9 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       onClick={handleCanvasClick}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleFileDrop}
     >
       {/* Grid Overlay */}
       {isGridVisible && <div className="grid-overlay" style={gridStyle} />}
@@ -478,8 +587,38 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
       {/* Connection Line (overlay for edge creation) */}
       {hasActiveBrainDump && <ConnectionLine />}
       
+      {/* Drag and Drop Overlay */}
+      {isDragOver && dragOverPosition && hasActiveBrainDump && (
+        <>
+          {/* Drop Zone Indicator */}
+          <div className="absolute inset-0 bg-blue-500/10 border-2 border-dashed border-blue-500 pointer-events-none z-50" />
+          
+          {/* Drop Position Indicator */}
+          <div
+            className="absolute w-48 h-48 border-2 border-dashed border-blue-600 bg-blue-100/20 rounded-lg pointer-events-none z-50 flex items-center justify-center"
+            style={{
+              left: dragOverPosition.x * viewport.zoom + viewport.x - 96,
+              top: dragOverPosition.y * viewport.zoom + viewport.y - 96,
+            }}
+          >
+            <div className="text-blue-600 text-center">
+              <div className="text-2xl mb-2">📎</div>
+              <div className="text-sm font-medium">Drop file here</div>
+            </div>
+          </div>
+        </>
+      )}
+      
       {/* Detail Modal */}
       <DetailModal />
+      
+      {/* File Drop Modal */}
+      <FileDropModal
+        isOpen={!!pendingFile}
+        fileName={pendingFile?.file.name || ''}
+        onConfirm={handleFileModalConfirm}
+        onCancel={handleFileModalCancel}
+      />
     </div>
   );
 }
