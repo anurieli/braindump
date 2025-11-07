@@ -201,6 +201,7 @@ export default function DetailModal() {
                   <img
                     src={attachmentUrl}
                     alt={attachmentData?.filename || idea.text}
+                    draggable={false}
                     className="max-h-[60vh] w-full object-contain"
                   />
                 )}

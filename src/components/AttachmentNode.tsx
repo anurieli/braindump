@@ -43,18 +43,28 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
   const [attachmentData, setAttachmentData] = useState<Attachment | null>(attachment || null);
   const [loadingAttachment, setLoadingAttachment] = useState(!attachment);
   const [isResizing, setIsResizing] = useState(false);
+  const [hoveredCorner, setHoveredCorner] = useState<string | null>(null);
   
   const dragStartRef = useRef({ x: 0, y: 0, ideaX: idea.position_x, ideaY: idea.position_y });
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const lastClickTimeRef = useRef(0);
   const nodeRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const resizeStartRef = useRef({ x: 0, y: 0, width: idea.width || 320, height: idea.height || 240 });
+  const resizeStartRef = useRef({ 
+    x: 0, 
+    y: 0, 
+    width: idea.width || 320, 
+    height: idea.height || 240,
+    positionX: idea.position_x,
+    positionY: idea.position_y,
+    corner: null as string | null
+  });
   
   const isSelected = selectedIdeaIds.has(idea.id);
   const isConnectionSource = connectionSourceId === idea.id;
   const MIN_DIMENSION = 120;
   const MAX_DIMENSION = 800;
+  const CORNER_SIZE = 20; // Size of corner detection area in pixels
 
   const clampWidthForAspect = useCallback((targetWidth: number, ratio: number | null) => {
     if (!Number.isFinite(targetWidth) || targetWidth <= 0) {
@@ -154,6 +164,42 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
   const width = Math.max(MIN_DIMENSION, Math.min(MAX_DIMENSION, computedWidth));
   const height = canResize && aspectRatio > 0 ? width / aspectRatio : Math.max(MIN_DIMENSION, Math.min(MAX_DIMENSION, baseHeight));
 
+  // Detect which corner the mouse is over
+  const detectCorner = useCallback((e: React.MouseEvent | MouseEvent): string | null => {
+    if (!contentRef.current || !canResize) return null;
+    
+    const rect = contentRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const isNearLeft = x < CORNER_SIZE;
+    const isNearRight = x > rect.width - CORNER_SIZE;
+    const isNearTop = y < CORNER_SIZE;
+    const isNearBottom = y > rect.height - CORNER_SIZE;
+    
+    if (isNearTop && isNearLeft) return 'top-left';
+    if (isNearTop && isNearRight) return 'top-right';
+    if (isNearBottom && isNearLeft) return 'bottom-left';
+    if (isNearBottom && isNearRight) return 'bottom-right';
+    
+    return null;
+  }, [canResize]);
+
+  // Get cursor style for corner
+  const getCornerCursor = useCallback((corner: string | null): string => {
+    if (!corner) return '';
+    switch (corner) {
+      case 'top-left':
+      case 'bottom-right':
+        return 'nwse-resize';
+      case 'top-right':
+      case 'bottom-left':
+        return 'nesw-resize';
+      default:
+        return '';
+    }
+  }, []);
+
   // Keep idea dimensions in sync with rendered size (maintain square)
   useLayoutEffect(() => {
     const element = contentRef.current;
@@ -217,6 +263,23 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
     
     e.stopPropagation();
     
+    // Check if we're starting a resize from a corner
+    const corner = detectCorner(e);
+    if (corner && canResize) {
+      e.preventDefault();
+      setIsResizing(true);
+      resizeStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        width,
+        height,
+        positionX: idea.position_x,
+        positionY: idea.position_y,
+        corner,
+      };
+      return;
+    }
+    
     // Check for double-click
     const now = Date.now();
     if (now - lastClickTimeRef.current < 300) {
@@ -278,7 +341,7 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
         setSelection([idea.id]);
       }
     }
-  }, [idea.id, idea.position_x, idea.position_y, isSelected, openModal, addToSelection, setSelection, removeFromSelection, selectIdea, selectedIdeaIds, ideas, currentBrainDumpId, isCreatingConnection, connectionSourceId]);
+  }, [idea.id, idea.position_x, idea.position_y, isSelected, openModal, addToSelection, setSelection, removeFromSelection, selectIdea, selectedIdeaIds, ideas, currentBrainDumpId, isCreatingConnection, connectionSourceId, detectCorner, canResize, width, height]);
   
   // Use document-level mouse events for proper dragging
   useEffect(() => {
@@ -337,43 +400,83 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
   
   const handleMouseLeave = useCallback(() => {
     setIsHovered(false);
+    setHoveredCorner(null);
     if (isCreatingConnection && connectionSourceId !== idea.id) {
       setHoveredNodeId(null);
     }
   }, [isCreatingConnection, connectionSourceId, idea.id, setHoveredNodeId]);
 
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!canResize) return;
-    e.stopPropagation();
-    e.preventDefault();
-    setIsResizing(true);
-    resizeStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      width,
-      height,
-    };
-  }, [width, height, canResize]);
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (isResizing || !canResize) return;
+    const corner = detectCorner(e);
+    setHoveredCorner(corner);
+  }, [isResizing, canResize, detectCorner]);
 
   useEffect(() => {
-    if (!isResizing || !canResize) return;
+    if (!isResizing || !canResize || !resizeStartRef.current.corner) return;
 
     const handleResizeMove = (e: MouseEvent) => {
       const dx = (e.clientX - resizeStartRef.current.x) / viewport.zoom;
       const dy = (e.clientY - resizeStartRef.current.y) / viewport.zoom;
-      const diagonalDelta = (dx + dy) / 2;
-
-      const proposedWidth = resizeStartRef.current.width + diagonalDelta;
+      const corner = resizeStartRef.current.corner!;
+      
+      // Calculate scale factor based on corner
+      // For all corners, dragging away from the opposite corner increases size
+      // The diagonal movement determines the scale change
+      // All corners use the same formula: (dx + dy) / 2
+      // This works because dragging right+down (both positive) increases size for all corners
+      const scaleDelta = (dx + dy) / 2;
+      
+      const proposedWidth = resizeStartRef.current.width + scaleDelta * 2;
       const clampedWidth = clampWidthForAspect(proposedWidth, aspectRatio);
       const clampedHeight = clampedWidth / aspectRatio;
+      
+      // Calculate position adjustment to keep opposite corner fixed
+      const widthDelta = clampedWidth - resizeStartRef.current.width;
+      const heightDelta = clampedHeight - resizeStartRef.current.height;
+      
+      let newPositionX = resizeStartRef.current.positionX;
+      let newPositionY = resizeStartRef.current.positionY;
+      
+      // Adjust position based on which corner is being dragged
+      // The opposite corner stays fixed
+      switch (corner) {
+        case 'top-left':
+          // Bottom-right stays fixed, so move top-left
+          newPositionX = resizeStartRef.current.positionX - widthDelta / 2;
+          newPositionY = resizeStartRef.current.positionY - heightDelta / 2;
+          break;
+        case 'top-right':
+          // Bottom-left stays fixed, so move top-right
+          newPositionX = resizeStartRef.current.positionX + widthDelta / 2;
+          newPositionY = resizeStartRef.current.positionY - heightDelta / 2;
+          break;
+        case 'bottom-left':
+          // Top-right stays fixed, so move bottom-left
+          newPositionX = resizeStartRef.current.positionX - widthDelta / 2;
+          newPositionY = resizeStartRef.current.positionY + heightDelta / 2;
+          break;
+        case 'bottom-right':
+          // Top-left stays fixed, so move bottom-right
+          newPositionX = resizeStartRef.current.positionX + widthDelta / 2;
+          newPositionY = resizeStartRef.current.positionY + heightDelta / 2;
+          break;
+      }
+      
       updateIdeaDimensions(idea.id, {
         width: Number(clampedWidth.toFixed(2)),
         height: Number(clampedHeight.toFixed(2)),
+      });
+      
+      updateIdeaPosition(idea.id, {
+        x: Number(newPositionX.toFixed(2)),
+        y: Number(newPositionY.toFixed(2)),
       });
     };
 
     const handleResizeUp = () => {
       setIsResizing(false);
+      setHoveredCorner(null);
     };
 
     document.addEventListener('mousemove', handleResizeMove);
@@ -383,7 +486,7 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
       document.removeEventListener('mousemove', handleResizeMove);
       document.removeEventListener('mouseup', handleResizeUp);
     };
-  }, [isResizing, viewport.zoom, clampWidthForAspect, aspectRatio, idea.id, updateIdeaDimensions, canResize]);
+  }, [isResizing, viewport.zoom, clampWidthForAspect, aspectRatio, idea.id, updateIdeaDimensions, updateIdeaPosition, canResize]);
 
   // Render file preview based on type
   const renderFilePreview = () => {
@@ -398,6 +501,7 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
           <img
             src={metadata.thumbnailUrl ?? currentAttachment.url}
             alt={filename}
+            draggable={false}
             className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-200 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
             onLoad={(event) => {
               setImageLoaded(true);
@@ -420,6 +524,7 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
               }
             }}
             onError={() => setImageError(true)}
+            onDragStart={(e) => e.preventDefault()}
           />
           {imageError && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
@@ -451,7 +556,21 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
 
   const displayText = idea.text.length > 50 ? idea.text.substring(0, 50) + '...' : idea.text;
   const shouldShowCaption = idea.text && idea.text.trim() !== '' && idea.text.trim() !== filename?.trim();
-  const cursorStyle = isResizing ? 'nwse-resize' : isDragging ? 'grabbing' : isHovered ? 'grab' : 'pointer';
+  
+  // Determine cursor style
+  const getCursorStyle = () => {
+    if (isResizing && resizeStartRef.current.corner) {
+      return getCornerCursor(resizeStartRef.current.corner);
+    }
+    if (hoveredCorner && canResize) {
+      return getCornerCursor(hoveredCorner);
+    }
+    if (isDragging) return 'grabbing';
+    if (isHovered) return 'grab';
+    return 'pointer';
+  };
+  
+  const cursorStyle = getCursorStyle();
   
   return (
     <div
@@ -470,6 +589,7 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
     >
       <div 
         ref={contentRef}
@@ -493,24 +613,13 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
         )}
 
         {/* Connection handle in center */}
-        {isHovered && (
+        {isHovered && !hoveredCorner && (
           <div
             className="connection-handle absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center z-40 cursor-crosshair hover:scale-110 transition-transform shadow-lg"
             onMouseDown={handleConnectionHandleMouseDown}
             onMouseEnter={(e) => e.stopPropagation()}
           >
             <Move className="h-5 w-5 text-white" />
-          </div>
-        )}
-
-        {/* Resize handle */}
-        {canResize && (
-          <div
-            className="absolute bottom-2 right-2 h-5 w-5 rounded-full bg-white/80 border border-gray-300 flex items-center justify-center cursor-nwse-resize shadow-sm"
-            onMouseDown={handleResizeMouseDown}
-            onMouseEnter={(e) => e.stopPropagation()}
-          >
-            <div className="w-2.5 h-2.5 border-r-2 border-b-2 border-gray-400" />
           </div>
         )}
       </div>

@@ -71,6 +71,11 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const isConnectionSource = connectionSourceId === idea.id;
   const textColor = getThemeTextColor(theme);
   
+  // Check if this idea is a parent (has children in relationships)
+  const isParent = Object.values(edges).some(
+    edge => edge.brain_dump_id === currentBrainDumpId && edge.parent_id === idea.id
+  );
+  
   const width = idea.width || 200;
   const height = idea.height || 100;
 
@@ -400,7 +405,8 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const displayText = mainText.length > 100 ? mainText.substring(0, 100) + '...' : mainText;
 
   const baseBorder = isSelected ? '4px solid #3b82f6' 
-    : isDraggedOver ? '3px solid #10b981' 
+    : isDraggedOver ? '3px solid #10b981'
+    : isParent ? '2px solid #d97706' 
     : '2px solid rgba(156, 163, 175, 0.5)';
   
   const glowShadow = glowOpacity > 0
@@ -412,15 +418,20 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const dragOverShadow = isDraggedOver
     ? '0 0 20px rgba(16, 185, 129, 0.6), 0 10px 15px -3px rgba(0, 0, 0, 0.1)'
     : undefined;
-  const combinedShadow = [selectionShadow, dragOverShadow, glowShadow].filter(Boolean).join(', ') || undefined;
+  const parentShadow = isParent && !isSelected && !isDraggedOver
+    ? '0 0 15px rgba(217, 119, 6, 0.4), 0 5px 10px -3px rgba(0, 0, 0, 0.1)'
+    : undefined;
+  const combinedShadow = [selectionShadow, dragOverShadow, parentShadow, glowShadow].filter(Boolean).join(', ') || undefined;
   
   const backgroundStyle = isSelected
     ? 'rgba(59, 130, 246, 0.05)'
     : isDraggedOver
       ? 'rgba(16, 185, 129, 0.05)'
-      : glowOpacity > 0
-        ? `rgba(59, 130, 246, ${0.08 * glowOpacity})`
-        : undefined;
+      : isParent && !isSelected && !isDraggedOver
+        ? 'rgba(217, 119, 6, 0.03)'
+        : glowOpacity > 0
+          ? `rgba(59, 130, 246, ${0.08 * glowOpacity})`
+          : undefined;
 
   // Render AttachmentNode for attachment type ideas
   if (idea.type === 'attachment') {
