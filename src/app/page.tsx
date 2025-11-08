@@ -11,8 +11,8 @@ import InputBox, { InputBoxHandle } from '@/components/InputBox'
 import SidePanel from '@/components/SidePanel'
 import Toolbar from '@/components/Toolbar'
 import ControlPanel from '@/components/ControlPanel'
-import KeyboardShortcutsModal from '@/components/KeyboardShortcutsModal'
 import SettingsModal from '@/components/SettingsModal'
+import ShortcutsPanel from '@/components/ShortcutsPanel'
 import { useGlobalKeyboardShortcuts } from '@/hooks/useGlobalKeyboardShortcuts'
 
 export default function Home() {
@@ -134,8 +134,10 @@ export default function Home() {
         )}
 
         {/* Modals */}
-        <KeyboardShortcutsModal />
         <SettingsModal />
+        
+        {/* Shortcuts Panel - Always visible in top right */}
+        <ShortcutsPanel />
       </div>
     </div>
   )

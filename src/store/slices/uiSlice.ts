@@ -34,6 +34,13 @@ export interface UiSlice {
   draggedIdeaId: string | null
   dragHoverTargetId: string | null
 
+  // Quick editor state
+  quickEditor: {
+    isActive: boolean
+    position: { x: number; y: number }
+    text: string
+  } | null
+
   // Performance settings
   enableAnimations: boolean
   renderQuality: 'low' | 'medium' | 'high'
@@ -77,6 +84,11 @@ export interface UiSlice {
   setDraggedIdeaId: (id: string | null) => void
   setDragHoverTargetId: (id: string | null) => void
   
+  // Quick editor actions
+  showQuickEditor: (x: number, y: number, initialText?: string) => void
+  hideQuickEditor: () => void
+  updateQuickEditorText: (text: string) => void
+  
   // Keyboard shortcuts
   setShortcutPressed: (key: string, pressed: boolean) => void
   
@@ -117,6 +129,9 @@ export const createUiSlice: StateCreator<
   // Drag state
   draggedIdeaId: null,
   dragHoverTargetId: null,
+
+  // Quick editor state
+  quickEditor: null,
 
   // Performance settings
   enableAnimations: true,
@@ -291,6 +306,30 @@ export const createUiSlice: StateCreator<
 
   setDragHoverTargetId: (id: string | null) => {
     set({ dragHoverTargetId: id })
+  },
+
+  // Quick editor actions
+  showQuickEditor: (x: number, y: number, initialText = '') => {
+    set({
+      quickEditor: {
+        isActive: true,
+        position: { x, y },
+        text: initialText
+      }
+    })
+  },
+
+  hideQuickEditor: () => {
+    set({ quickEditor: null })
+  },
+
+  updateQuickEditorText: (text: string) => {
+    set(state => ({
+      quickEditor: state.quickEditor ? {
+        ...state.quickEditor,
+        text
+      } : null
+    }))
   },
 
   // Keyboard shortcuts

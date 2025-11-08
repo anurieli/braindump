@@ -50,10 +50,6 @@ export default function ControlPanel() {
     console.log('📊 Grid toggled from control panel')
   }
 
-  const handleShowShortcuts = () => {
-    openModal('keyboard-shortcuts')
-    setIsOpen(false)
-  }
 
   const handleOpenSettings = () => {
     openModal('settings')
@@ -160,18 +156,6 @@ export default function ControlPanel() {
 
             {/* Divider */}
             <div className="border-t border-current/10 my-2"></div>
-
-            {/* Keyboard Shortcuts */}
-            <div className="px-4 py-2 hover:bg-current/10 cursor-pointer" onClick={handleShowShortcuts}>
-              <div className="flex items-center gap-3">
-                <div className="text-purple-500">
-                  ⌨️
-                </div>
-                <span className="text-sm font-medium">
-                  Keyboard Shortcuts
-                </span>
-              </div>
-            </div>
 
             {/* Settings */}
             <div className="px-4 py-2 hover:bg-current/10 cursor-pointer" onClick={handleOpenSettings}>

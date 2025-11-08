@@ -149,4 +149,4 @@ export interface EdgeDB {
   updated_at: string;
 }
 
-export type Modal = 'settings' | 'idea-details' | 'edge-creation' | 'keyboard-shortcuts' | null;
+export type Modal = 'settings' | 'idea-details' | 'edge-creation' | null;

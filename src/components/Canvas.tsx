@@ -12,6 +12,7 @@ import ConnectionLine from './ConnectionLine';
 import DetailModal from './DetailModal';
 import BatchActions from './BatchActions';
 import FileDropModal from './FileDropModal';
+import QuickIdeaInput from './QuickIdeaInput';
 import type { InputBoxHandle } from './InputBox';
 
 interface CanvasProps {
@@ -53,6 +54,13 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   const setEdgeSelection = useStore(state => state.setEdgeSelection);
   const deleteEdge = useStore(state => state.deleteEdge);
   const edges = useStore(state => state.edges);
+  
+  // Quick editor state
+  const showQuickEditor = useStore(state => state.showQuickEditor);
+  
+  // Connection handling state
+  const isCreatingConnection = useStore(state => state.isCreatingConnection);
+  const cancelConnection = useStore(state => state.cancelConnection);
   
   // Directly access ideas object and memoize to avoid infinite loop
   // Filter ideas by current brain dump ID
@@ -356,6 +364,25 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
     setPendingFile(null);
   }, []);
 
+  // Handle double-click for quick idea creation
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    if (!currentBrainDump) return;
+    
+    // Don't trigger on UI elements or when in special modes
+    if (isPanning || isSelecting || isCreatingConnection) return;
+    
+    // Calculate canvas position
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+    
+    // Show quick editor at screen position (we'll convert to canvas coords when creating)
+    showQuickEditor(screenX, screenY);
+    
+    e.preventDefault();
+    e.stopPropagation();
+  }, [currentBrainDump, isPanning, isSelecting, isCreatingConnection, showQuickEditor]);
+
   // Handle wheel (zoom) - must use native event listener with passive: false
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!currentBrainDump) return;
@@ -421,8 +448,6 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   }, [handleWheel]);
 
   // Connection handling - add global mouse up
-  const isCreatingConnection = useStore(state => state.isCreatingConnection);
-  const cancelConnection = useStore(state => state.cancelConnection);
   
   useEffect(() => {
     const handleGlobalMouseUp = () => {
@@ -534,6 +559,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onDoubleClick={handleDoubleClick}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleFileDrop}
@@ -609,6 +635,9 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
         onConfirm={handleFileModalConfirm}
         onCancel={handleFileModalCancel}
       />
+      
+      {/* Quick Idea Input */}
+      <QuickIdeaInput />
     </div>
   );
 }
