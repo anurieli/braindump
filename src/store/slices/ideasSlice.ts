@@ -4,7 +4,7 @@ import { IdeaDB } from '@/types'
 // Alias for easier use in the store
 type Idea = IdeaDB
 import { supabase } from '@/lib/supabase'
-import { generateEmbedding, generateSummary, cleanGrammar } from '@/lib/openai'
+import { generateEmbedding, generateSummary } from '@/lib/openai'
 import { uploadFile, validateFile } from '@/lib/file-upload'
 import { positionDebouncer } from '@/lib/debounce'
 import type { StoreState } from '../index'
@@ -70,30 +70,6 @@ export const createIdeasSlice: StateCreator<
   },
 
   addIdea: async (text: string, position: { x: number, y: number }) => {
-    // Optimistic update - create temporary idea
-    const tempId = `temp-${Date.now()}`
-    const tempIdea: Idea = {
-      id: tempId,
-      brain_dump_id: '', // Will be set when we know current brain dump
-      text,
-      position_x: position.x,
-      position_y: position.y,
-      width: 200,
-      height: 100,
-      type: 'text',
-      state: 'generating',
-      metadata: {},
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-
-    // Add to state immediately
-    set(state => ({
-      ideas: { ...state.ideas, [tempId]: tempIdea },
-      isProcessing: { ...state.isProcessing, [tempId]: true },
-      lastPlacedIdeaPosition: position
-    }))
-
     try {
       // Get current brain dump ID from store
       const currentBrainDumpId = get().currentBrainDumpId
@@ -101,21 +77,23 @@ export const createIdeasSlice: StateCreator<
         throw new Error('No brain dump selected')
       }
 
-      // Clean grammar
-      const cleanedText = cleanGrammar(text)
+      // Determine state based on text length
+      // Short text (< 50 chars) goes directly to 'ready', longer text needs AI processing
+      const needsAI = text.length >= 50
+      const initialState = needsAI ? 'generating' : 'ready'
 
-      // Insert into database
+      // Insert into database with correct initial state
       const { data, error } = await supabase
         .from('ideas')
         .insert([{
           brain_dump_id: currentBrainDumpId,
-          text: cleanedText,
+          text: text,
           position_x: position.x,
           position_y: position.y,
           width: 200,
           height: 100,
           type: 'text',
-          state: 'generating'
+          state: initialState
         }])
         .select()
         .single()
@@ -123,25 +101,23 @@ export const createIdeasSlice: StateCreator<
       if (error) throw error
       if (!data) throw new Error('No data returned from insert')
 
-      // Replace temp idea with real idea
-      set(state => {
-        const newIdeas = { ...state.ideas }
-        delete newIdeas[tempId]
-        newIdeas[data.id] = data
+      // Add real idea to state immediately
+      set(state => ({
+        ideas: { 
+          ...state.ideas, 
+          [data.id]: data 
+        },
+        isProcessing: { 
+          ...state.isProcessing, 
+          [data.id]: needsAI 
+        },
+        lastPlacedIdeaPosition: { x: data.position_x, y: data.position_y }
+      }))
 
-        const newProcessing = { ...state.isProcessing }
-        delete newProcessing[tempId]
-        newProcessing[data.id] = true
-
-        return { 
-          ideas: newIdeas, 
-          isProcessing: newProcessing,
-          lastPlacedIdeaPosition: { x: data.position_x, y: data.position_y }
-        }
-      })
-
-      // Process AI enhancements in background
-      get().processIdeaAI(data.id)
+      // Only process AI enhancements if text is long enough
+      if (needsAI) {
+        get().processIdeaAI(data.id)
+      }
 
       // Refresh brain dump counts
       if (get().refreshBrainDumpCounts) {
@@ -150,14 +126,7 @@ export const createIdeasSlice: StateCreator<
 
       return data.id
     } catch (error) {
-      // Remove temp idea on error
-      set(state => {
-        const newIdeas = { ...state.ideas }
-        delete newIdeas[tempId]
-        const newProcessing = { ...state.isProcessing }
-        delete newProcessing[tempId]
-        return { ideas: newIdeas, isProcessing: newProcessing }
-      })
+      console.error('Failed to add idea:', error)
       throw error
     }
   },
@@ -297,11 +266,9 @@ export const createIdeasSlice: StateCreator<
     }))
 
     try {
-      const cleanedText = cleanGrammar(text)
-
       const { error } = await supabase
         .from('ideas')
-        .update({ text: cleanedText, state: 'generating' })
+        .update({ text: text, state: 'generating' })
         .eq('id', id)
 
       if (error) throw error

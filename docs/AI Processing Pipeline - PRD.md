@@ -125,6 +125,12 @@ interface EmbeddingResponse {
 }
 ```
 
+### 3.3 Implementation Notes
+
+- Shared AI logic (clients, model metadata, prompts, cost tracking) now lives in `src/lib/ai/`.
+- Background workers and API routes call helpers such as `summarizeText` and `createEmbedding` to ensure consistent prompts, models, and logging across nodes.
+- Usage statistics returned from the helpers include token counts and computed cost, enabling unified reporting in `ai_operations`.
+
 #### **Node 4: Semantic Analysis & Tagging**
 - **Purpose**: Auto-generate tags and detect themes/categories
 - **Model**: OpenAI GPT-4 Turbo

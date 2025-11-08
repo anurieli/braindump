@@ -7,6 +7,18 @@ function isValidUUID(uuid: string): boolean {
   return uuidRegex.test(uuid)
 }
 
+function extractUrls(text: string): string[] {
+  if (typeof text !== 'string' || !text) return []
+  // Basic URL regex for http/https
+  const urlRegex = /\bhttps?:\/\/[^\s<>()]+/gi
+  const urls = text.match(urlRegex) || []
+  // Deduplicate and trim punctuation
+  const cleaned = urls
+    .map(u => u.replace(/[),.;]+$/g, ''))
+    .filter(Boolean)
+  return Array.from(new Set(cleaned))
+}
+
 // GET /api/ideas - List ideas (filtered by brain_dump_id)
 export async function GET(request: NextRequest) {
   try {
@@ -194,6 +206,80 @@ export async function POST(request: NextRequest) {
         ideaId: data.id,
         text: trimmedText
       })
+    }
+
+    // Extract URLs from the text and create URL attachments (best-effort, non-blocking errors)
+    const foundUrls = extractUrls(trimmedText)
+    if (foundUrls.length > 0) {
+      for (const url of foundUrls) {
+        try {
+          // Best-effort metadata enrichment similar to /api/attachments
+          let metadata: Record<string, unknown> = { originalUrl: url }
+          try {
+            const res = await fetch(url, {
+              method: 'GET',
+              headers: {
+                'user-agent': 'Mozilla/5.0 (compatible; BrainDumpBot/1.0; +https://example.com/bot)',
+                accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              },
+              redirect: 'follow',
+            })
+            if (res.ok) {
+              const html = await res.text()
+              // Simple meta extraction
+              const metaTagRegex = /<meta\s+[^>]*?(?:property|name)\s*=\s*["']([^"']+)["'][^>]*?content\s*=\s*["']([^"']*)["'][^>]*?>/gi
+              const meta: Record<string, string> = {}
+              let match
+              while ((match = metaTagRegex.exec(html)) !== null) {
+                const key = String(match[1]).toLowerCase()
+                const val = String(match[2])
+                meta[key] = val
+              }
+              const title = meta['og:title'] || meta['twitter:title'] || meta['title']
+              const description = meta['og:description'] || meta['twitter:description'] || meta['description']
+              let image = meta['og:image:secure_url'] || meta['og:image'] || meta['twitter:image:src'] || meta['twitter:image']
+              let favicon: string | undefined
+              const iconMatch = html.match(/<link[^>]+rel=["'](?:shortcut\s+icon|icon)["'][^>]*href=["']([^"']+)["'][^>]*>/i)
+              if (iconMatch && iconMatch[1]) {
+                favicon = iconMatch[1]
+              }
+              try {
+                if (favicon) {
+                  const abs = new URL(favicon, url)
+                  favicon = abs.href
+                }
+                if (image) {
+                  const absImg = new URL(image, url)
+                  image = absImg.href
+                }
+              } catch {}
+              metadata = {
+                ...metadata,
+                title,
+                description,
+                favicon,
+                previewUrl: image,
+                thumbnailUrl: image
+              }
+            }
+          } catch {
+            // ignore enrichment failures
+          }
+
+          await supabase
+            .from('attachments')
+            .insert({
+              idea_id: data.id,
+              type: 'url',
+              url,
+              filename: null,
+              metadata
+            })
+        } catch (e) {
+          // Do not block idea creation on attachment failures
+          console.warn('Failed to create URL attachment for idea:', e)
+        }
+      }
     }
 
     return NextResponse.json({

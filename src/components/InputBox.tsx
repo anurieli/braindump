@@ -126,13 +126,15 @@ type LocalAttachment = {
   name: string
   url?: string
   thumbnail?: string
+  metaTitle?: string
+  metaDescription?: string
 }
 
 function normalizeUrl(rawUrl: string): string | null {
   const trimmed = rawUrl.trim()
   if (!trimmed) return null
 
-  const candidate = trimmed.startsWith('http://') || trimmed.startsWith('https://')
+  const candidate = (trimmed.startsWith('http://') || trimmed.startsWith('https://'))
     ? trimmed
     : `https://${trimmed}`
 
@@ -145,9 +147,23 @@ function normalizeUrl(rawUrl: string): string | null {
 }
 
 function extractUrlsFromText(text: string): string[] {
-  const urlPattern = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi
-  const matches = text.match(urlPattern)
-  return matches ? matches : []
+  // Matches:
+  // - http(s)://...
+  // - www.domain.tld/...
+  // - bare domain.tld/...
+  // Requires a TLD of at least 2 letters and a token boundary afterwards
+  const urlPattern = /\b(?:(?:https?:\/\/)|(?:www\.))?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,})(?::\d{2,5})?(?:\/[^\s]*)?(?=$|\s|[),.;!?])/gi
+  const matches = text.match(urlPattern) || []
+  // Prevent premature matches like "www.g" (www with no second dot)
+  const filtered = matches.filter(raw => {
+    const lower = raw.toLowerCase()
+    if (lower.startsWith('www.')) {
+      // Must contain another dot after 'www.'
+      return lower.indexOf('.', 4) !== -1
+    }
+    return true
+  })
+  return filtered
 }
 
 // Interface for external control of InputBox
@@ -190,13 +206,90 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
     }
   }, [inputValue])
   
+  // Enrich URL attachments with link preview metadata in background
+  useEffect(() => {
+    let cancelled = false
+    const fetchPreviews = async () => {
+      const pending = attachments.filter(a => a.type === 'url' && a.url && !a.thumbnail && !a.metaTitle)
+      for (const att of pending) {
+        try {
+          const res = await fetch(`/api/link-preview?url=${encodeURIComponent(att.url as string)}`)
+          if (!res.ok) continue
+          const data = await res.json()
+          if (cancelled) return
+          setAttachments(prev => prev.map(p => {
+            if (p.id !== att.id) return p
+            return {
+              ...p,
+              thumbnail: data.image || data.thumbnail || data.favicon || p.thumbnail,
+              metaTitle: data.title || p.metaTitle,
+              metaDescription: data.description || p.metaDescription,
+              // keep url/name
+            }
+          }))
+        } catch {
+          // ignore failures silently
+        }
+      }
+    }
+    if (attachments.some(a => a.type === 'url')) {
+      fetchPreviews()
+    }
+    return () => { cancelled = true }
+  }, [attachments])
 
   const handleSubmit = async () => {
-    if (!inputValue.trim() || !currentBrainDumpId) {
+    if (!currentBrainDumpId) {
       return
     }
     
     try {
+      // Final extraction on submit to capture trailing URL without space
+      const extracted = extractUrlsFromText(inputValue)
+      if (extracted.length > 0) {
+        const normalizedUrls = extracted
+          .map(url => ({ raw: url.trim(), normalized: normalizeUrl(url) }))
+          .filter((entry): entry is { raw: string; normalized: string } => Boolean(entry.normalized))
+        if (normalizedUrls.length > 0) {
+          setAttachments(prev => {
+            const existingUrls = new Set(
+              prev
+                .filter(att => att.type === 'url' && att.url)
+                .map(att => att.url as string)
+            )
+            const newAttachments: LocalAttachment[] = []
+            normalizedUrls.forEach(({ raw, normalized }) => {
+              if (existingUrls.has(normalized)) return
+              existingUrls.add(normalized)
+              newAttachments.push({
+                id: `attachment-${Date.now()}-${Math.random()}`,
+                type: 'url',
+                name: raw,
+                url: normalized,
+              })
+            })
+            if (newAttachments.length === 0) return prev
+            return [...prev, ...newAttachments]
+          })
+          // Remove raw URLs from the text before creating the idea
+          const cleaned = normalizedUrls.reduce((acc, { raw }) => {
+            const pattern = new RegExp(raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
+            return acc.replace(pattern, ' ')
+          }, inputValue).replace(/\s+/g, ' ').trim()
+          if (!cleaned) {
+            // If text is only URLs, keep a small placeholder so idea creation isn't blocked
+            setInputValue('(link)')
+          } else {
+            setInputValue(cleaned)
+          }
+        }
+      }
+
+      const finalText = (inputValue || '').trim()
+      if (!finalText) {
+        return
+      }
+
       // Calculate viewport center, accounting for sidebar
       const viewportCenterX = (sidebarWidth + (window.innerWidth - sidebarWidth) / 2 - viewport.x) / viewport.zoom
       const viewportCenterY = (window.innerHeight / 2 - viewport.y) / viewport.zoom
@@ -205,7 +298,25 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
       const { x, y } = findPosition(ideas, viewportCenterX, viewportCenterY, lastPlacedIdeaPosition, 220, currentBrainDumpId)
       
       // Call addIdea with text and position (handles database insertion)
-      await addIdea(inputValue.trim(), { x, y })
+      const ideaId = await addIdea((inputValue || '').trim(), { x, y })
+
+      // Create URL attachments in background
+      const urlAttachments = attachments.filter(a => a.type === 'url' && a.url)
+      for (const att of urlAttachments) {
+        try {
+          const form = new FormData()
+          form.append('idea_id', ideaId)
+          form.append('type', 'url')
+          form.append('url', att.url as string)
+          // server will enrich metadata
+          await fetch('/api/attachments', {
+            method: 'POST',
+            body: form
+          })
+        } catch {
+          // non-blocking
+        }
+      }
 
       // Center viewport on newly placed idea
       const ideaCenterX = x + IDEA_WIDTH / 2
@@ -389,7 +500,60 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
           <textarea
             ref={inputRef}
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value
+              // Only process when user finishes a token: space or newline
+              const endsWithBoundary = /\s$/.test(next)
+              if (!endsWithBoundary) {
+                setInputValue(next)
+                return
+              }
+
+              // Extract complete URLs on boundary
+              const extracted = extractUrlsFromText(next)
+              if (extracted.length === 0) {
+                setInputValue(next)
+                return
+              }
+
+              const normalizedUrls = extracted
+                .map(url => ({ raw: url.trim(), normalized: normalizeUrl(url) }))
+                .filter((entry): entry is { raw: string; normalized: string } => Boolean(entry.normalized))
+
+              if (normalizedUrls.length === 0) {
+                setInputValue(next)
+                return
+              }
+
+              setAttachments(prev => {
+                const existingUrls = new Set(
+                  prev
+                    .filter(att => att.type === 'url' && att.url)
+                    .map(att => att.url as string)
+                )
+                const newAttachments: LocalAttachment[] = []
+                normalizedUrls.forEach(({ raw, normalized }) => {
+                  if (existingUrls.has(normalized)) return
+                  existingUrls.add(normalized)
+                  newAttachments.push({
+                    id: `attachment-${Date.now()}-${Math.random()}`,
+                    type: 'url',
+                    name: raw,
+                    url: normalized,
+                  })
+                })
+                if (newAttachments.length === 0) return prev
+                return [...prev, ...newAttachments]
+              })
+
+              // Remove raw URL tokens from input
+              const cleaned = normalizedUrls.reduce((acc, { raw }) => {
+                const pattern = new RegExp(raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
+                return acc.replace(pattern, ' ')
+              }, next).replace(/\s+/g, ' ').trimStart()
+
+              setInputValue(cleaned)
+            }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="Capture your thoughts..."
@@ -424,14 +588,19 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
             <div className="flex gap-2 overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin' }}>
               {attachments.map((attachment) => {
                 const cardGlass = getThemeGlassStyle(theme, false)
+                const isUrl = attachment.type === 'url'
+                const href = attachment.url
+                const displayName = attachment.metaTitle || attachment.name || (href ? new URL(href).hostname : '')
                 return (
                   <div
                     key={attachment.id}
                     className="relative flex-shrink-0 backdrop-blur-xl rounded-xl p-2 group"
                     style={{ 
-                      minWidth: '100px', 
+                      minWidth: '120px', 
                       maxWidth: '140px',
                       ...cardGlass,
+                      border: isUrl ? '1px solid rgba(59, 130, 246, 0.7)' : cardGlass.border,
+                      boxShadow: isUrl ? '0 0 0 1px rgba(59, 130, 246, 0.25) inset' : cardGlass.boxShadow,
                     }}
                   >
                     <Button
@@ -446,18 +615,35 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
                     >
                       <X className="h-3 w-3" />
                     </Button>
-                    {attachment.thumbnail ? (
-                      <img
-                        src={attachment.thumbnail}
-                        alt={attachment.name}
-                        className="w-full h-14 rounded object-cover mb-1"
-                      />
+                    {(() => {
+                      const imageEl = attachment.thumbnail ? (
+                        <img
+                          src={attachment.thumbnail}
+                          alt={displayName}
+                          className="w-full h-14 rounded object-cover mb-1"
+                          onError={() => {
+                            // Fallback to no-thumbnail so we render icon instead of broken image
+                            setAttachments(prev => prev.map(p => p.id === attachment.id ? { ...p, thumbnail: undefined } : p))
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-14 rounded flex items-center justify-center mb-1" style={{ background: cardGlass.background }}>
+                          <Paperclip className="h-5 w-5" style={{ color: isUrl ? '#3b82f6' : textColors.secondary }} />
+                        </div>
+                      )
+                      return isUrl && href ? (
+                        <a href={href} target="_blank" rel="noopener noreferrer">
+                          {imageEl}
+                        </a>
+                      ) : imageEl
+                    })()}
+                    {isUrl && href ? (
+                      <a href={href} target="_blank" rel="noopener noreferrer" className="block">
+                        <p className="text-xs truncate" style={{ color: '#3b82f6' }}>{displayName}</p>
+                      </a>
                     ) : (
-                      <div className="w-full h-14 rounded flex items-center justify-center mb-1" style={{ background: cardGlass.background }}>
-                        <Paperclip className="h-5 w-5" style={{ color: textColors.secondary }} />
-                      </div>
+                      <p className="text-xs truncate" style={{ color: textColors.secondary }}>{attachment.name}</p>
                     )}
-                    <p className="text-xs truncate" style={{ color: textColors.secondary }}>{attachment.name}</p>
                   </div>
                 )
               })}

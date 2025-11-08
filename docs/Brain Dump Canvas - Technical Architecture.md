@@ -309,6 +309,13 @@ Canvas
 
 ## AI Processing Pipeline
 
+### Shared AI Module
+
+- Location: `src/lib/ai/`
+- Includes centralized OpenAI client creation, model metadata (IDs, pricing, defaults), reusable prompt templates, and helpers like `summarizeText` / `createEmbedding`
+- Every AI node should consume these helpers so prompts, models, and cost tracking stay consistent
+- Helper responses include `{ data, model, usage }` enabling unified logging into `ai_operations`
+
 ### 1. Idea Creation Flow
 
 ```
@@ -335,51 +342,34 @@ Notify Frontend (WebSocket)
 
 **Process**:
 ```typescript
+import { summarizeText } from '@/lib/ai'
+
 async function summarizeIdea(ideaId: string, text: string) {
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        {
-          role: "system",
-          content: `You are a summarization assistant. Summarize the following idea in 50 characters or less (max 2 lines). Maintain the core meaning. Do not add interpretation. Output only the summary, no explanation.`
-        },
-        {
-          role: "user",
-          content: text
-        }
-      ],
-      max_tokens: 30,
-      temperature: 0.3
-    });
-    
-    const summary = response.choices[0].message.content.trim();
-    
-    // Update database
-    await db.query(
-      'UPDATE ideas SET summary = $1 WHERE id = $2',
-      [summary, ideaId]
-    );
-    
-    return summary;
-  } catch (error) {
-    console.error('Summarization failed:', error);
-    // Fallback: truncate original text
-    const fallback = text.substring(0, 50) + '...';
-    await db.query(
-      'UPDATE ideas SET summary = $1 WHERE id = $2',
-      [fallback, ideaId]
-    );
-    return fallback;
-  }
+  const result = await summarizeText(text, {
+    variant: 'idea',
+    overrides: { max_tokens: 30 },
+  })
+
+  const summary = result.data
+
+  await db.query('UPDATE ideas SET summary = $1 WHERE id = $2', [summary, ideaId])
+
+  await logAiOperation({
+    ideaId,
+    type: 'summarization',
+    model: result.model.id,
+    usage: result.usage,
+  })
+
+  return summary
 }
 ```
 
 **Configuration** (Controllable):
-- Model: `gpt-4` (can switch to `gpt-4-turbo` or `gpt-3.5-turbo`)
+- Model: `summarization` task config in `src/lib/ai/models.ts` (defaults to `gpt-4`)
 - Max tokens: `30` (adjustable)
 - Temperature: `0.3` (low for consistency)
-- System prompt: Fully customizable
+- System prompt: Controlled in `src/lib/ai/prompts.ts`
 - Fallback behavior: Truncate if API fails
 
 ### 3. Embedding Generation Node
@@ -388,33 +378,27 @@ async function summarizeIdea(ideaId: string, text: string) {
 
 **Process**:
 ```typescript
+import { createEmbedding } from '@/lib/ai'
+
 async function generateEmbedding(ideaId: string, text: string) {
-  try {
-    const response = await openai.embeddings.create({
-      model: "text-embedding-3-small",
-      input: text,
-      dimensions: 1536
-    });
-    
-    const embedding = response.data[0].embedding;
-    
-    // Store in database
-    await db.query(
-      'UPDATE ideas SET embedding = $1 WHERE id = $2',
-      [JSON.stringify(embedding), ideaId]
-    );
-    
-    return embedding;
-  } catch (error) {
-    console.error('Embedding generation failed:', error);
-    // Don't block - embedding is optional for MVP
-    return null;
-  }
+  const result = await createEmbedding(text)
+  const embedding = result.data
+
+  await db.query('UPDATE ideas SET embedding = $1 WHERE id = $2', [JSON.stringify(embedding), ideaId])
+
+  await logAiOperation({
+    ideaId,
+    type: 'embedding',
+    model: result.model.id,
+    usage: result.usage,
+  })
+
+  return embedding
 }
 ```
 
 **Configuration** (Controllable):
-- Model: `text-embedding-3-small` (can switch to `3-large`)
+- Model: `embedding` task config in `src/lib/ai/models.ts` (defaults to `text-embedding-3-small`)
 - Dimensions: `1536` (can reduce to `512` for cheaper storage)
 - Retry logic: 3 attempts with exponential backoff
 - Failure behavior: Log error, continue without embedding
@@ -723,6 +707,40 @@ export default function Canvas() {
   );
 }
 ```
+
+### Visual State Management
+
+The IdeaNode component implements multiple visual states to provide rich user feedback:
+
+**Visual State Hierarchy** (higher priority states override lower ones):
+1. **Selection State** - Blue border and shadow when idea is selected
+   - Border: `4px solid #3b82f6` 
+   - Shadow: `0 0 20px rgba(59, 130, 246, 0.6)`
+   - Background: `rgba(59, 130, 246, 0.05)`
+
+2. **Drag Target State** - Green border when being dragged over during edge creation
+   - Border: `3px solid #10b981`
+   - Shadow: `0 0 20px rgba(16, 185, 129, 0.6)`
+   - Background: `rgba(16, 185, 129, 0.05)`
+
+3. **Parent Indicator State** - Gold stroke for ideas that have children (relationships)
+   - Border: `2px solid #d97706` 
+   - Shadow: `0 0 15px rgba(217, 119, 6, 0.4)`
+   - Background: `rgba(217, 119, 6, 0.03)`
+
+4. **New Idea Glow** - Blue glow that dissipates over 5 seconds for newly created ideas
+   - Duration: `5000ms` with linear fade
+   - Shadow: `0 0 20px rgba(59, 130, 246, 0.45 * opacity)`
+   - Background: `rgba(59, 130, 246, 0.08 * opacity)`
+
+5. **Connection Source** - Blue ring when starting connection creation
+   - Ring: `ring-2 ring-blue-400`
+
+**Implementation Notes**:
+- Visual states are computed in real-time based on store state
+- Parent detection uses edge relationships: `edges.some(edge => edge.parent_id === idea.id)`
+- Glow opacity calculated using: `Math.max(0, 1 - age / GLOW_DURATION_MS)`
+- Multiple shadows are combined using CSS comma separation
 
 ---
 

@@ -27,6 +27,9 @@ export default function DetailModal() {
   const [attachmentData, setAttachmentData] = useState<Attachment | null>(null);
   const [isAttachmentLoading, setIsAttachmentLoading] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [allAttachments, setAllAttachments] = useState<any[]>([]);
+  const [isAllAttachmentsLoading, setIsAllAttachmentsLoading] = useState(false);
+  const [allAttachmentsError, setAllAttachmentsError] = useState<string | null>(null);
   
   const isOpen = activeModal === 'idea-details' && selectedIdeaId !== null;
   
@@ -108,6 +111,42 @@ export default function DetailModal() {
     return { parents, children };
   }, [edges, ideas, idea, currentBrainDumpId]);
   
+  // Load all attachments for any idea type (including text with links)
+  useEffect(() => {
+    if (!isOpen || !idea) {
+      setAllAttachments([]);
+      setAllAttachmentsError(null);
+      setIsAllAttachmentsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setIsAllAttachmentsLoading(true);
+    setAllAttachmentsError(null);
+    const loadAll = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('attachments')
+          .select('*')
+          .eq('idea_id', idea.id);
+        if (error) throw error;
+        if (!cancelled) {
+          setAllAttachments(data || []);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setAllAttachmentsError('Unable to load attachments');
+          setAllAttachments([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsAllAttachmentsLoading(false);
+        }
+      }
+    };
+    loadAll();
+    return () => { cancelled = true; };
+  }, [isOpen, idea?.id]);
+
   if (!isOpen || !idea) return null;
 
   const ideaMetadata = idea.metadata as Record<string, unknown> | undefined;
@@ -243,6 +282,66 @@ export default function DetailModal() {
                 </p>
               </div>
             )}
+          </div>
+
+          {/* Attachments (URLs, images, PDFs, files) */}
+          <div className="mb-6">
+            <h3 className="text-sm mb-2 opacity-70">Attachments</h3>
+            {isAllAttachmentsLoading && (
+              <p className="text-sm opacity-60">Loading attachments…</p>
+            )}
+            {allAttachmentsError && (
+              <p className="text-sm text-red-500">{allAttachmentsError}</p>
+            )}
+            {!isAllAttachmentsLoading && !allAttachmentsError && allAttachments.length === 0 && (
+              <p className="text-sm opacity-60">No attachments</p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {allAttachments.map((att) => {
+                const type = att.type as string;
+                const url = (att.metadata?.previewUrl as string) || (att.metadata?.thumbnailUrl as string) || (att.url as string);
+                const title = (att.metadata?.title as string) || (att.filename as string) || (att.url as string) || 'Attachment';
+                const open = () => { if (url) window.open(url, '_blank'); };
+                return (
+                  <div
+                    key={att.id}
+                    className="flex items-center gap-3 p-2 rounded-lg liquid-glass"
+                  >
+                    <div className="h-12 w-12 rounded overflow-hidden border border-current/10 flex-shrink-0 bg-gray-100">
+                      {type === 'image' || type === 'url' ? (
+                        url ? (
+                          <img
+                            src={url}
+                            alt={title}
+                            className="h-full w-full object-cover"
+                            onClick={open}
+                          />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center text-xs opacity-60">No preview</div>
+                        )
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center text-xs opacity-60">
+                          {type.toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm truncate">{title}</p>
+                      {att.url && (
+                        <a
+                          href={att.url as string}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs underline opacity-70"
+                        >
+                          Open
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
           
           {/* Relationship Tree */}

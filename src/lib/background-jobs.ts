@@ -1,3 +1,5 @@
+import { createEmbedding, summarizeText } from '@/lib/ai'
+
 interface Job {
   id: string
   type: 'summarization' | 'embedding' | 'grammar'
@@ -94,35 +96,12 @@ class BackgroundJobQueue {
     const startTime = Date.now()
 
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'gpt-4',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a summarization assistant. Summarize the following idea in 50 characters or less (max 2 lines). Maintain the core meaning. Do not add interpretation. Output only the summary, no explanation.'
-            },
-            {
-              role: 'user',
-              content: text
-            }
-          ],
+      const result = await summarizeText(text, {
+        overrides: {
           max_tokens: 30,
-          temperature: 0.3
-        })
+        },
       })
-
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
-      }
-
-      const result = await response.json()
-      const summary = result.choices[0].message.content.trim()
+      const summary = result.data
       const duration = Date.now() - startTime
 
       // Update the idea with the summary
@@ -146,12 +125,12 @@ class BackgroundJobQueue {
       await this.logAiOperation({
         type: 'summarization',
         ideaId,
-        model: 'gpt-4',
+        model: result.model.id,
         duration,
         success: true,
-        inputTokens: result.usage?.prompt_tokens,
-        outputTokens: result.usage?.completion_tokens,
-        cost: this.calculateCost('gpt-4', result.usage?.prompt_tokens || 0, result.usage?.completion_tokens || 0)
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+        cost: result.usage.cost,
       })
 
     } catch (error) {
@@ -176,25 +155,8 @@ class BackgroundJobQueue {
     const startTime = Date.now()
 
     try {
-      const response = await fetch('https://api.openai.com/v1/embeddings', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'text-embedding-3-small',
-          input: text,
-          dimensions: 1536
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
-      }
-
-      const result = await response.json()
-      const embedding = result.data[0].embedding
+      const result = await createEmbedding(text)
+      const embedding = result.data
       const duration = Date.now() - startTime
 
       // Update the idea with the embedding
@@ -217,12 +179,12 @@ class BackgroundJobQueue {
       await this.logAiOperation({
         type: 'embedding',
         ideaId,
-        model: 'text-embedding-3-small',
+        model: result.model.id,
         duration,
         success: true,
-        inputTokens: result.usage?.prompt_tokens,
-        outputTokens: 0, // Embeddings don't have output tokens
-        cost: this.calculateCost('text-embedding-3-small', result.usage?.prompt_tokens || 0, 0)
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+        cost: result.usage.cost,
       })
 
     } catch (error) {
@@ -231,36 +193,13 @@ class BackgroundJobQueue {
   }
 
   private async processGrammarJob(job: Job) {
-    const { ideaId, text } = job.data
-    
-    // Simple grammar cleaning - can be enhanced with LanguageTool API
-    const cleanedText = text
-      .replace(/\s+/g, ' ') // Multiple spaces to single space
-      .replace(/([.!?])\s*([A-Z])/g, '$1 $2') // Proper spacing after sentences
-      .trim()
-
-    // Update the idea with cleaned text
-    const { createServerClient } = await import('@/lib/supabase')
-    const supabase = createServerClient()
-    
-    const { error: updateError } = await supabase
-      .from('ideas')
-      .update({ 
-        text: cleanedText,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', ideaId)
-
-    if (updateError) {
-      throw new Error(`Failed to update idea: ${updateError.message}`)
-    }
-
-    // Log the AI operation
+    // Grammar job disabled - no text modifications allowed
+    // Just log that it was skipped
     await this.logAiOperation({
       type: 'grammar',
-      ideaId,
-      model: 'rule-based',
-      duration: 10, // Very fast
+      ideaId: job.data.ideaId,
+      model: 'disabled',
+      duration: 0,
       success: true,
       inputTokens: 0,
       outputTokens: 0,
@@ -319,19 +258,6 @@ class BackgroundJobQueue {
       success: false,
       error: errorMessage
     })
-  }
-
-  private calculateCost(model: string, inputTokens: number, outputTokens: number): number {
-    // Pricing as of October 2024 (approximate)
-    const pricing: Record<string, { input: number; output: number }> = {
-      'gpt-4': { input: 0.00003, output: 0.00006 }, // per token
-      'text-embedding-3-small': { input: 0.00000002, output: 0 } // per token
-    }
-
-    const modelPricing = pricing[model]
-    if (!modelPricing) return 0
-
-    return (inputTokens * modelPricing.input) + (outputTokens * modelPricing.output)
   }
 
   getQueueStatus() {

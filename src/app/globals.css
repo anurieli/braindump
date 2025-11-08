@@ -141,6 +141,32 @@ body {
   transition: transform 0.2s ease-out;
 }
 
+/* Generating Border Animation */
+.generating-border {
+  position: relative;
+  border: 3px solid transparent;
+  background: 
+    linear-gradient(var(--glass-bg), var(--glass-bg)) padding-box,
+    linear-gradient(90deg, 
+      #a855f7 0%, 
+      #d946ef 25%, 
+      #ec4899 50%, 
+      #d946ef 75%, 
+      #a855f7 100%
+    ) border-box;
+  background-size: 100% 100%, 400% 100%;
+  animation: gradient-flow 3s linear infinite;
+}
+
+@keyframes gradient-flow {
+  0% {
+    background-position: 0 0, 0% 0;
+  }
+  100% {
+    background-position: 0 0, 400% 0;
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

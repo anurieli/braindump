@@ -1,16 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import OpenAI from 'openai'
-
-// Server-side only - API key stays secure
-const getOpenAIClient = () => {
-  const apiKey = process.env.OPENAI_API_KEY
-  
-  if (!apiKey) {
-    throw new Error('Missing OPENAI_API_KEY environment variable')
-  }
-  
-  return new OpenAI({ apiKey })
-}
+import { createEmbedding } from '@/lib/ai'
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,13 +12,13 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    const client = getOpenAIClient()
-    const response = await client.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: text,
+    const result = await createEmbedding(text)
+
+    return NextResponse.json({
+      embedding: result.data,
+      model: result.model.id,
+      usage: result.usage,
     })
-    
-    return NextResponse.json({ embedding: response.data[0].embedding })
   } catch (error) {
     console.error('Error generating embedding:', error)
     return NextResponse.json(

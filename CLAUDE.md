@@ -45,6 +45,11 @@ Always consult these docs for implementation details and requirements:
 4. **Build Roadmap** for phased delivery approach
 ** IMPORTANT if something is changed please make sure to update the relavant documents !!!!
 
+**AI Module Notes:**
+- Centralize every new AI node under `src/lib/ai/`
+- Define model metadata in `models.ts`, prompts in `prompts.ts`, and reuse `summarizeText` / `createEmbedding` patterns when adding helpers
+- Always log AI usage via the shared helpers so `ai_operations` remains accurate
+
 **Key Performance Targets from PRD:**
 - Idea creation: <100ms UI response
 - Canvas pan/zoom: 60 FPS

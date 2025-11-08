@@ -21,6 +21,7 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
   const touchedNodesInConnection = useStore(state => state.touchedNodesInConnection);
   const edges = useStore(state => state.edges);
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId);
+  const draggedIdeaId = useStore(state => state.draggedIdeaId);
   
   const updateIdeaPosition = useStore(state => state.updateIdeaPosition);
   const openModal = useStore(state => state.openModal);
@@ -584,7 +585,11 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
         transform: 'translate(-50%, -50%)',
         pointerEvents: 'auto',
         cursor: cursorStyle,
-        zIndex: 1,
+        // Elevate when selected; if dragging this or group dragging, keep on top
+        zIndex:
+          (isDragging || (draggedIdeaId && (draggedIdeaId === idea.id || selectedIdeaIds.has(idea.id))))
+            ? 20
+            : (isSelected ? 10 : 1),
       }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}

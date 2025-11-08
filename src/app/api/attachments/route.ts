@@ -6,6 +6,37 @@ function isValidUUID(uuid: string): boolean {
   return uuidRegex.test(uuid)
 }
 
+function extractMeta(html: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  const metaTagRegex = /<meta\s+[^>]*?(?:property|name)\s*=\s*["']([^"']+)["'][^>]*?content\s*=\s*["']([^"']*)["'][^>]*?>/gi
+  let match
+  while ((match = metaTagRegex.exec(html)) !== null) {
+    const key = match[1].toLowerCase()
+    const val = match[2]
+    result[key] = val
+  }
+  const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i)
+  if (titleMatch && titleMatch[1]) {
+    result['title'] = titleMatch[1].trim()
+  }
+  // Robust favicon detection regardless of attribute order
+  const linkTagRegex = /<link\b[^>]*>/gi
+  let link
+  while ((link = linkTagRegex.exec(html)) !== null) {
+    const tag = link[0]
+    const relMatch = tag.match(/rel=["']([^"']+)["']/i)
+    const hrefMatch = tag.match(/href=["']([^"']+)["']/i)
+    if (relMatch && hrefMatch) {
+      const rel = relMatch[1].toLowerCase()
+      const href = hrefMatch[1]
+      if (rel.includes('icon')) {
+        result['favicon'] = result['favicon'] || href
+      }
+    }
+  }
+  return result
+}
+
 // POST /api/attachments - Upload attachment
 export async function POST(request: NextRequest) {
   try {
@@ -119,6 +150,46 @@ export async function POST(request: NextRequest) {
       
       metadata = {
         originalUrl: url
+      }
+
+      // Enrich with link preview metadata (best-effort)
+      try {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'user-agent': 'Mozilla/5.0 (compatible; BrainDumpBot/1.0; +https://example.com/bot)',
+            accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          },
+          redirect: 'follow',
+        })
+        if (res.ok) {
+          const html = await res.text()
+          const meta = extractMeta(html)
+          const title = meta['og:title'] || meta['twitter:title'] || meta['title']
+          const description = meta['og:description'] || meta['twitter:description'] || meta['description']
+          let image = meta['og:image:secure_url'] || meta['og:image'] || meta['twitter:image:src'] || meta['twitter:image']
+          let favicon = meta['favicon']
+          try {
+            if (favicon) {
+              const abs = new URL(favicon, url)
+              favicon = abs.href
+            }
+            if (image) {
+              const absImg = new URL(image, url)
+              image = absImg.href
+            }
+          } catch {}
+          metadata = {
+            ...metadata,
+            title,
+            description,
+            favicon,
+            previewUrl: image,
+            thumbnailUrl: image
+          }
+        }
+      } catch (e) {
+        // ignore preview errors
       }
     }
 

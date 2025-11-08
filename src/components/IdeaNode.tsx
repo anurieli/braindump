@@ -6,6 +6,7 @@ import { getThemeTextColor } from '@/lib/themes';
 import type { IdeaDB } from '@/types';
 import { Paperclip, Move } from 'lucide-react';
 import AttachmentNode from './AttachmentNode';
+import { supabase } from '@/lib/supabase';
 
 interface IdeaNodeProps {
   idea: IdeaDB;
@@ -297,7 +298,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         updateIdeaPosition(idea.id, { x: newX, y: newY });
       }
       
-      // Check if we're dragging over other ideas for edge creation
+      // Check if we're dragging over other ideas for immediate edge creation/deletion
       if (draggedIdeaId === idea.id) {
         // Find all idea elements that might be under the mouse cursor
         const elementsUnderMouse = document.elementsFromPoint(e.clientX, e.clientY);
@@ -308,7 +309,30 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         
         if (ideaElementUnderMouse) {
           const targetIdeaId = (ideaElementUnderMouse as HTMLElement).dataset.ideaId;
-          console.log(`🎯 Dragging ${idea.id} over ${targetIdeaId}`);
+          const previousTargetId = dragHoverTargetId;
+          
+          // Only process if we're hovering over a new target
+          if (targetIdeaId && targetIdeaId !== previousTargetId) {
+            console.log(`🎯 Touch detected: ${idea.id} touching ${targetIdeaId}`);
+            
+            // Check if edge already exists
+            const existingEdge = Object.values(edges).find(
+              edge => edge.brain_dump_id === currentBrainDumpId && 
+                      edge.parent_id === idea.id && 
+                      edge.child_id === targetIdeaId
+            );
+            
+            if (existingEdge) {
+              // Delete existing edge
+              deleteEdge(existingEdge.id);
+              console.log(`🗑️ Removed edge from ${idea.id} to ${targetIdeaId}`);
+            } else {
+              // Create new edge
+              addEdge(idea.id, targetIdeaId, 'related_to');
+              console.log(`✅ Created edge from ${idea.id} to ${targetIdeaId}`);
+            }
+          }
+          
           setDragHoverTargetId(targetIdeaId || null);
         } else {
           setDragHoverTargetId(null);
@@ -319,40 +343,11 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     const handleDocumentMouseUp = () => {
       setIsDragging(false);
       
-      // Check if we're dropping this idea onto another idea for edge creation
-      if (draggedIdeaId === idea.id && dragHoverTargetId) {
-        const sourceId = draggedIdeaId;
-        const targetId = dragHoverTargetId;
-        
-        // Only create edge if we're dropping onto a different idea
-        if (sourceId !== targetId) {
-          try {
-            // Check if edge already exists before creating
-            const existingEdge = Object.values(edges).find(
-              edge => edge.brain_dump_id === currentBrainDumpId && 
-                      edge.parent_id === sourceId && 
-                      edge.child_id === targetId
-            );
-            
-            if (existingEdge) {
-              // Delete existing edge
-              deleteEdge(existingEdge.id);
-              console.log(`🗑️ Deleted edge from ${sourceId} to ${targetId}`);
-            } else {
-              // Create new edge from source to target
-              addEdge(sourceId, targetId, 'related_to');
-              console.log(`✅ Created edge from ${sourceId} to ${targetId}`);
-            }
-          } catch (error) {
-            console.error('Failed to create/delete edge:', error);
-          }
-        }
-      }
-      
-      // Clear drag state if this was the dragged idea
+      // Clear drag state if this was the dragged idea (no drop-based edge creation)
       if (draggedIdeaId === idea.id) {
         setDraggedIdeaId(null);
         setDragHoverTargetId(null);
+        console.log('🏁 Finished dragging idea:', idea.id);
       }
     };
 
@@ -404,9 +399,13 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const mainText = hasValidSummary ? idea.summary ?? '' : idea.text ?? '';
   const displayText = mainText.length > 100 ? mainText.substring(0, 100) + '...' : mainText;
 
+  // Check if node is in generating state
+  const isGenerating = idea.state === 'generating';
+
   const baseBorder = isSelected ? '4px solid #3b82f6' 
     : isDraggedOver ? '3px solid #10b981'
     : isParent ? '2px solid #d97706' 
+    : isGenerating ? '3px solid transparent' // Transparent to show gradient behind
     : '2px solid rgba(156, 163, 175, 0.5)';
   
   const glowShadow = glowOpacity > 0
@@ -433,6 +432,39 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
           ? `rgba(59, 130, 246, ${0.08 * glowOpacity})`
           : undefined;
 
+  // URL attachments for text ideas
+  const [urlAttachments, setUrlAttachments] = useState<Array<{ id: string; url: string; title?: string; thumbnailUrl?: string }>>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (idea.type !== 'text') {
+        setUrlAttachments([]);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from('attachments')
+          .select('id, url, type, metadata')
+          .eq('idea_id', idea.id);
+        if (error) throw error;
+        if (cancelled) return;
+        const urls = (data || [])
+          .filter((a: any) => a.type === 'url' && typeof a.url === 'string')
+          .map((a: any) => ({
+            id: a.id,
+            url: a.url as string,
+            title: a.metadata?.title as string | undefined,
+            thumbnailUrl: (a.metadata?.thumbnailUrl || a.metadata?.previewUrl) as string | undefined,
+          }));
+        setUrlAttachments(urls);
+      } catch {
+        if (!cancelled) setUrlAttachments([]);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [idea.id, idea.type]);
+
   // Render AttachmentNode for attachment type ideas
   if (idea.type === 'attachment') {
     return <AttachmentNode idea={idea} />;
@@ -451,7 +483,11 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         transform: 'translate(-50%, -50%)',
         pointerEvents: 'auto',
         cursor: isDragging ? 'grabbing' : isHovered ? 'grab' : 'pointer',
-        zIndex: 1,
+        // Elevate z-index when selected and especially during drag (including group drag)
+        zIndex:
+          (draggedIdeaId && (draggedIdeaId === idea.id || selectedIdeaIds.has(idea.id)))
+            ? 20
+            : (isSelected ? 10 : 1),
       }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -462,6 +498,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         className={`
           relative liquid-glass rounded-lg p-3 min-w-[180px] max-w-[280px] transition-all hover:shadow-xl
           ${isConnectionSource ? 'ring-2 ring-blue-400' : ''}
+          ${isGenerating ? 'generating-border' : ''}
         `}
         style={{
           border: baseBorder,
@@ -481,11 +518,71 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
           </div>
         )}
         
+        {/* Peek preview (slightly expanded) */}
+        {urlAttachments.length > 0 && urlAttachments[0]?.thumbnailUrl && (
+          <div className="mb-2 rounded overflow-hidden border border-current/10 h-16">
+            <img
+              src={urlAttachments[0].thumbnailUrl}
+              alt={urlAttachments[0].title || urlAttachments[0].url}
+              className="h-full w-full object-cover"
+              onClick={(e) => {
+                e.stopPropagation()
+                try { window.open(urlAttachments[0].url, '_blank') } catch {}
+              }}
+            />
+          </div>
+        )}
         {/* Content */}
         <p className="text-sm break-words">{displayText}</p>
+        {/* URL attachments preview */}
+        {urlAttachments.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-current/10 space-y-1">
+            {urlAttachments.map(att => {
+              const href = att.url;
+              let host: string | undefined;
+              try { host = new URL(href).hostname; } catch {}
+              const label = att.title || host || href;
+              return (
+                <a
+                  key={att.id}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 group"
+                  style={{ color: '#3b82f6' }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="h-6 w-6 rounded overflow-hidden flex-shrink-0 border border-blue-400/50">
+                    {att.thumbnailUrl ? (
+                      <img
+                        src={att.thumbnailUrl}
+                        alt={label}
+                        className="h-full w-full object-cover"
+                        onError={() => {
+                          setUrlAttachments(prev => prev.map(p => p.id === att.id ? { ...p, thumbnailUrl: undefined } : p))
+                        }}
+                      />
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center bg-blue-500/10">
+                        <Paperclip className="h-3 w-3 text-blue-500" />
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-xs truncate group-hover:underline">{label}</span>
+                </a>
+              );
+            })}
+          </div>
+        )}
         
-        {/* Original text preview when summary is shown */}
-        {hasValidSummary && (
+        {/* Footer: show generating state, summary, or nothing */}
+        {isGenerating ? (
+          <div className="mt-2 pt-2 border-t border-current/10">
+            <p className="text-xs text-purple-400 font-medium">
+              generating summary...
+            </p>
+          </div>
+        ) : hasValidSummary ? (
           <div className="mt-2 pt-2 border-t border-current/10">
             <p className="text-xs opacity-50 overflow-hidden" style={{
               display: '-webkit-box',
@@ -496,7 +593,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
               {idea.text.length > 100 ? idea.text.substring(0, 100) + '...' : idea.text}
             </p>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

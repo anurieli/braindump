@@ -40,21 +40,6 @@ export const generateSummary = async (text: string): Promise<string> => {
 }
 
 export const cleanGrammar = (text: string): string => {
-  // Basic grammar cleaning without changing meaning
-  let cleaned = text.trim()
-  
-  // Capitalize first letter
-  if (cleaned.length > 0) {
-    cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
-  }
-  
-  // Add period if missing and doesn't end with punctuation
-  if (cleaned.length > 0 && !/[.!?]$/.test(cleaned)) {
-    cleaned += '.'
-  }
-  
-  // Fix multiple spaces
-  cleaned = cleaned.replace(/\s+/g, ' ')
-  
-  return cleaned
+  // Return text as-is without any modifications
+  return text
 }
