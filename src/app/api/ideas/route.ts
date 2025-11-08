@@ -200,14 +200,6 @@ export async function POST(request: NextRequest) {
       text: trimmedText
     })
 
-    // Queue grammar cleaning if needed (basic check for common issues)
-    if (trimmedText.includes('  ') || /[.!?][a-z]/.test(trimmedText)) {
-      await backgroundJobQueue.addJob('grammar', {
-        ideaId: data.id,
-        text: trimmedText
-      })
-    }
-
     // Extract URLs from the text and create URL attachments (best-effort, non-blocking errors)
     const foundUrls = extractUrls(trimmedText)
     if (foundUrls.length > 0) {
@@ -287,8 +279,7 @@ export async function POST(request: NextRequest) {
       message: 'Idea created successfully',
       background_jobs: {
         summarization: trimmedText.length > 50 || trimmedText.split('\n').length > 2,
-        embedding: true,
-        grammar: trimmedText.includes('  ') || /[.!?][a-z]/.test(trimmedText)
+        embedding: true
       }
     }, { status: 201 })
   } catch (error) {

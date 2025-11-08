@@ -163,7 +163,7 @@ CREATE TABLE ai_operations (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   
   -- Constraints
-  CONSTRAINT ai_operations_type_valid CHECK (type IN ('summarization', 'embedding', 'grammar'))
+  CONSTRAINT ai_operations_type_valid CHECK (type IN ('summarization', 'embedding'))
 );
 
 -- ============================================

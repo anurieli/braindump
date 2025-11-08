@@ -22,8 +22,8 @@ export default function CanvasHeader() {
   
   if (!currentBrainDump) return null;
   
-  const ideaCount = ideas.length;
-  const edgeCount = edges.length;
+  const ideaCount = Array.isArray(ideas) ? ideas.length : 0;
+  const edgeCount = Array.isArray(edges) ? edges.length : 0;
   
   const handleStartEdit = () => {
     setIsEditing(true);

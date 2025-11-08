@@ -104,7 +104,7 @@ OPENAI_API_KEY=sk-...
 User types in input box → Press Enter → 
 Idea created in database (state: generating) → 
 Idea appears on canvas immediately → 
-Background: Grammar cleaning → Summarization → Embedding generation → 
+Background: Summarization → Embedding generation → 
 Idea updated (state: ready)
 ```
 
@@ -413,7 +413,7 @@ Render canvas
 - Idea created with state "generating"
 - Positioned at viewport center + random offset
 - Appears on canvas immediately
-- Background: grammar cleaning → summarization → embedding
+- Background: summarization → embedding
 - State changes to "ready" when complete
 
 **Display States**:
@@ -468,7 +468,6 @@ Render canvas
 
 **Summarization**:
 - Triggered if text > 50 characters or > 2 lines
-- Grammar cleaned first (capitalize, punctuation, spacing)
 - OpenAI GPT-4 API called with specific prompt
 - Summary max 50 characters
 - Fallback: truncate if API fails

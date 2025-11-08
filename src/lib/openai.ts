@@ -38,8 +38,3 @@ export const generateSummary = async (text: string): Promise<string> => {
     throw error
   }
 }
-
-export const cleanGrammar = (text: string): string => {
-  // Return text as-is without any modifications
-  return text
-}

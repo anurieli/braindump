@@ -6,6 +6,7 @@ import { signOut } from '@/lib/auth-helpers';
 import { useRouter } from 'next/navigation';
 import { 
   ChevronRight, 
+  ChevronLeft,
   Plus, 
   Trash2, 
   Edit2,
@@ -14,6 +15,7 @@ import {
   Check
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Tooltip } from '@/components/ui/tooltip';
 
 export default function SidePanel() {
   const router = useRouter();
@@ -24,6 +26,7 @@ export default function SidePanel() {
   const createBrainDump = useStore(state => state.createBrainDump);
   const updateBrainDumpName = useStore(state => state.updateBrainDumpName);
   const archiveBrainDump = useStore(state => state.archiveBrainDump);
+  const toggleSidebar = useStore(state => state.toggleSidebar);
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
@@ -58,6 +61,18 @@ export default function SidePanel() {
     }
   };
 
+  const handleSidebarClick = (e: React.MouseEvent) => {
+    // Check if the click is on an interactive element or its children
+    const target = e.target as HTMLElement;
+    const isInteractive = target.closest('button, input, a, [role="button"], [onclick]');
+    
+    // Only toggle if clicking on empty space (not on interactive elements)
+    // Interactive elements should call e.stopPropagation() to prevent this
+    if (!isInteractive) {
+      toggleSidebar();
+    }
+  };
+
   const formatDate = (date: Date) => {
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -82,34 +97,93 @@ export default function SidePanel() {
     }
   };
 
+  const isSidebarOpen = useStore(state => state.isSidebarOpen);
+
   return (
-    <div className="w-80 h-full bg-gray-50 flex flex-col">
+    <div 
+      className={`h-full bg-gray-50 flex flex-col transition-all duration-300 cursor-pointer ${
+        isSidebarOpen ? 'w-80' : 'w-16'
+      }`}
+      onClick={handleSidebarClick}
+    >
       {/* Header */}
-      <div className="p-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center">
+      <div 
+        className={`flex items-center transition-all duration-300 ${
+          isSidebarOpen ? 'p-6 justify-between' : 'p-3 justify-center'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className={`flex items-center gap-3 transition-all duration-300 ${
+          isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'
+        }`}>
+          <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center flex-shrink-0">
             <Brain className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Hi, anurieli365</h1>
+            <h1 className="text-xl font-semibold text-gray-900 whitespace-nowrap">Hi, anurieli365</h1>
           </div>
         </div>
-        <ChevronRight className="w-5 h-5 text-gray-400" />
+        {!isSidebarOpen && (
+          <Tooltip content="Brain Dump Canvas" side="right">
+            <div className="bg-purple-500 rounded-xl flex items-center justify-center flex-shrink-0 w-10 h-10">
+              <Brain className="w-5 h-5 text-white" />
+            </div>
+          </Tooltip>
+        )}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleSidebar();
+          }}
+          className="p-2 hover:bg-gray-200 rounded-lg transition-colors flex-shrink-0"
+          title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+        >
+          {isSidebarOpen ? (
+            <ChevronLeft className="w-5 h-5 text-gray-400" />
+          ) : (
+            <ChevronRight className="w-5 h-5 text-gray-400" />
+          )}
+        </button>
       </div>
       
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6">
+      <div 
+        className={`flex-1 overflow-y-auto transition-all duration-300 ${
+          isSidebarOpen ? 'px-6' : 'px-2'
+        }`}
+      >
         {/* New Brain Dump Button */}
-        <button
-          onClick={handleCreateBrainDump}
-          className="w-full bg-gray-200 hover:bg-gray-300 rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 transition-colors"
-        >
-          <Plus className="w-5 h-5 text-gray-700" />
-          <span className="text-gray-700 font-medium">New Brain Dump</span>
-        </button>
+        {isSidebarOpen ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCreateBrainDump();
+            }}
+            className="w-full bg-gray-200 hover:bg-gray-300 rounded-2xl mb-6 flex items-center justify-center gap-3 transition-all duration-300 p-4"
+          >
+            <Plus className="w-5 h-5 text-gray-700 flex-shrink-0" />
+            <span className="text-gray-700 font-medium whitespace-nowrap">New Brain Dump</span>
+          </button>
+        ) : (
+          <Tooltip content="New Brain Dump" side="right">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCreateBrainDump();
+              }}
+              className="w-full bg-gray-200 hover:bg-gray-300 rounded-2xl mb-6 flex items-center justify-center gap-3 transition-all duration-300 p-3"
+            >
+              <Plus className="w-5 h-5 text-gray-700 flex-shrink-0" />
+            </button>
+          </Tooltip>
+        )}
         
         {/* Brain Dumps List */}
-        <div className="space-y-4">
+        <div 
+          className={`space-y-4 transition-all duration-300 ${
+            isSidebarOpen ? '' : 'space-y-2'
+          }`}
+        >
           {brainDumps.map(brainDump => {
             const isActive = brainDump.id === currentBrainDumpId;
             const isEditing = editingId === brainDump.id;
@@ -119,76 +193,101 @@ export default function SidePanel() {
             const connectionCount = brainDump.edge_count ?? 0;
             const lastUpdated = brainDump.updated_at ? new Date(brainDump.updated_at) : new Date();
             
-            return (
+            const brainDumpContent = (
               <div
-                key={brainDump.id}
                 className={`
-                  group bg-white rounded-2xl p-6 cursor-pointer transition-all hover:shadow-sm border-2 relative
+                  group bg-white rounded-2xl cursor-pointer transition-all hover:shadow-sm border-2 relative
                   ${isActive ? 'border-purple-500 bg-purple-50 shadow-md' : 'border-gray-200'}
+                  ${isSidebarOpen ? 'p-6' : 'p-3'}
                 `}
-                onClick={() => !isEditing && switchBrainDump(brainDump.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isEditing) {
+                    switchBrainDump(brainDump.id);
+                  }
+                }}
               >
                 {/* Active indicator badge */}
                 {isActive && (
-                  <div className="absolute top-3 right-3 w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
-                    <Check className="w-4 h-4 text-white" />
+                  <div className={`absolute bg-purple-500 rounded-full flex items-center justify-center ${
+                    isSidebarOpen ? 'top-3 right-3 w-6 h-6' : 'top-1 right-1 w-3 h-3'
+                  }`}>
+                    <Check className={`text-white ${isSidebarOpen ? 'w-4 h-4' : 'w-2 h-2'}`} />
                   </div>
                 )}
                 
-                {isEditing ? (
-                  <Input
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    onBlur={handleSaveEdit}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSaveEdit();
-                      if (e.key === 'Escape') setEditingId(null);
-                    }}
-                    autoFocus
-                    className="text-lg font-semibold border-none p-0 h-auto focus:ring-0"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <>
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3 flex-1">
-                        <span className="text-2xl">👋</span>
-                        <h3 className={`text-lg font-semibold ${isActive ? 'text-purple-900' : 'text-gray-900'}`}>
-                          {brainDump.name}
-                        </h3>
+                {isSidebarOpen ? (
+                  isEditing ? (
+                    <Input
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      onBlur={handleSaveEdit}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveEdit();
+                        if (e.key === 'Escape') setEditingId(null);
+                      }}
+                      autoFocus
+                      className="text-lg font-semibold border-none p-0 h-auto focus:ring-0"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-3 flex-1">
+                          <span className="text-2xl">👋</span>
+                          <h3 className={`text-lg font-semibold ${isActive ? 'text-purple-900' : 'text-gray-900'}`}>
+                            {brainDump.name}
+                          </h3>
+                        </div>
+                        
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartEdit(brainDump.id, brainDump.name);
+                            }}
+                            className="p-1 hover:bg-gray-100 rounded transition-colors"
+                          >
+                            <Edit2 className="w-4 h-4 text-gray-500" />
+                          </button>
+                          
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(brainDump.id);
+                            }}
+                            className="p-1 hover:bg-red-50 rounded transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          </button>
+                        </div>
                       </div>
                       
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleStartEdit(brainDump.id, brainDump.name);
-                          }}
-                          className="p-1 hover:bg-gray-100 rounded transition-colors"
-                        >
-                          <Edit2 className="w-4 h-4 text-gray-500" />
-                        </button>
-                        
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(brainDump.id);
-                          }}
-                          className="p-1 hover:bg-red-50 rounded transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </button>
+                      <div className={`text-sm mb-3 ${isActive ? 'text-purple-700' : 'text-gray-600'}`}>
+                        {ideaCount} ideas • {connectionCount} connections
                       </div>
-                    </div>
-                    
-                    <div className={`text-sm mb-3 ${isActive ? 'text-purple-700' : 'text-gray-600'}`}>
-                      {ideaCount} ideas • {connectionCount} connections
-                    </div>
-                    
-                    <div className="text-gray-400 text-xs">
-                      Updated {formatDate(lastUpdated)}
-                    </div>
-                  </>
+                      
+                      <div className="text-gray-400 text-xs">
+                        Updated {formatDate(lastUpdated)}
+                      </div>
+                    </>
+                  )
+                ) : (
+                  <div className="flex items-center justify-center">
+                    <span className="text-2xl">👋</span>
+                  </div>
+                )}
+              </div>
+            );
+
+            return (
+              <div key={brainDump.id}>
+                {isSidebarOpen ? (
+                  brainDumpContent
+                ) : (
+                  <Tooltip content={brainDump.name} side="right">
+                    {brainDumpContent}
+                  </Tooltip>
                 )}
               </div>
             );
@@ -197,20 +296,44 @@ export default function SidePanel() {
       </div>
       
       {/* User Section */}
-      <div className="p-6 border-t border-gray-200">
-        <div className="mb-4">
-          <div className="text-gray-900 font-medium">anurieli365</div>
-          <div className="text-gray-500 text-sm">anurieli365@gmail.com</div>
-        </div>
-        
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-3 text-gray-600 hover:text-gray-800 transition-colors"
-        >
-          <LogOut className="w-4 h-4" />
-          <span>Log Out</span>
-        </button>
+      <div 
+        className={`border-t border-gray-200 transition-all duration-300 ${
+          isSidebarOpen ? 'p-6' : 'p-3'
+        }`}
+      >
+        {isSidebarOpen ? (
+          <>
+            <div className="mb-4">
+              <div className="text-gray-900 font-medium">anurieli365</div>
+              <div className="text-gray-500 text-sm">anurieli365@gmail.com</div>
+            </div>
+            
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleLogout();
+              }}
+              className="flex items-center gap-3 text-gray-600 hover:text-gray-800 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Log Out</span>
+            </button>
+          </>
+        ) : (
+          <Tooltip content="Log Out" side="right">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleLogout();
+              }}
+              className="w-full flex items-center justify-center text-gray-600 hover:text-gray-800 transition-colors"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          </Tooltip>
+        )}
       </div>
     </div>
   );
 }
+

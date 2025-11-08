@@ -13,6 +13,7 @@ import Toolbar from '@/components/Toolbar'
 import ControlPanel from '@/components/ControlPanel'
 import KeyboardShortcutsModal from '@/components/KeyboardShortcutsModal'
 import SettingsModal from '@/components/SettingsModal'
+import { useGlobalKeyboardShortcuts } from '@/hooks/useGlobalKeyboardShortcuts'
 
 export default function Home() {
   const router = useRouter()
@@ -21,11 +22,15 @@ export default function Home() {
   
   const brainDumps = useStore(state => state.brainDumps)
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
+  const isSidebarOpen = useStore(state => state.isSidebarOpen)
   const loadBrainDumps = useStore(state => state.loadBrainDumps)
   const loadIdeas = useStore(state => state.loadIdeas)
   const loadEdges = useStore(state => state.loadEdges)
   const loadEdgeTypes = useStore(state => state.loadEdgeTypes)
   const switchBrainDump = useStore(state => state.switchBrainDump)
+
+  // Initialize global keyboard shortcuts
+  useGlobalKeyboardShortcuts()
 
   useEffect(() => {
     const initializeApp = async () => {

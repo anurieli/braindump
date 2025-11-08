@@ -42,7 +42,6 @@ Rapidly dump ideas into an infinite 2D canvas via a persistent input box. Each i
 **4. Asynchronous Intelligence**
 - Long ideas auto-summarized (GPT-4)
 - All ideas embedded for semantic search (OpenAI embeddings)
-- Grammar cleaning without changing meaning
 - Everything happens in background, never blocks UI
 
 **5. Context-Aware Assistant** (Future)

@@ -2,7 +2,7 @@ import { createEmbedding, summarizeText } from '@/lib/ai'
 
 interface Job {
   id: string
-  type: 'summarization' | 'embedding' | 'grammar'
+  type: 'summarization' | 'embedding'
   data: any
   retries: number
   maxRetries: number
@@ -76,9 +76,6 @@ class BackgroundJobQueue {
           break
         case 'embedding':
           await this.processEmbeddingJob(job)
-          break
-        case 'grammar':
-          await this.processGrammarJob(job)
           break
         default:
           throw new Error(`Unknown job type: ${job.type}`)
@@ -190,21 +187,6 @@ class BackgroundJobQueue {
     } catch (error) {
       throw error
     }
-  }
-
-  private async processGrammarJob(job: Job) {
-    // Grammar job disabled - no text modifications allowed
-    // Just log that it was skipped
-    await this.logAiOperation({
-      type: 'grammar',
-      ideaId: job.data.ideaId,
-      model: 'disabled',
-      duration: 0,
-      success: true,
-      inputTokens: 0,
-      outputTokens: 0,
-      cost: 0
-    })
   }
 
   private async logAiOperation(operation: {

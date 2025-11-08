@@ -49,7 +49,6 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   const setSelectionBox = useStore(state => state.setSelectionBox);
   const clearSelection = useStore(state => state.clearSelection);
   const setPanning = useStore(state => state.setPanning);
-  const toggleSidebar = useStore(state => state.toggleSidebar);
   const setSelection = useStore(state => state.setSelection);
   const setEdgeSelection = useStore(state => state.setEdgeSelection);
   const deleteEdge = useStore(state => state.deleteEdge);
@@ -255,14 +254,6 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
       setSelectionBox(null);
     }
   }, [setPanning, setSelecting, setSelectionBox]);
-
-  // Handle click on empty canvas space
-  const handleCanvasClick = useCallback((e: React.MouseEvent) => {
-    // Only toggle if clicking directly on the canvas (empty space)
-    if (e.target === canvasRef.current && !isPanningRef.current && !isBoxSelectingRef.current && currentBrainDump) {
-      toggleSidebar();
-    }
-  }, [toggleSidebar, currentBrainDump]);
 
   // Handle drag and drop for files
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -543,7 +534,6 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      onClick={handleCanvasClick}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleFileDrop}

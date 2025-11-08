@@ -17,6 +17,7 @@ export interface BrainDumpsSlice {
   switchBrainDump: (id: string) => Promise<void>
   createBrainDump: (name?: string) => Promise<string>
   createDemoBrainDump: () => Promise<string>
+  duplicateBrainDump: (id: string, name?: string) => Promise<string>
   updateBrainDumpName: (id: string, name: string) => Promise<void>
   archiveBrainDump: (id: string) => Promise<void>
   updateViewport: (viewport: Viewport) => void
@@ -258,6 +259,44 @@ export const createBrainDumpsSlice: StateCreator<
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to create demo brain dump',
+        isLoading: false
+      })
+      throw error
+    }
+  },
+
+  duplicateBrainDump: async (id: string, name?: string) => {
+    set({ isLoading: true, error: null })
+
+    try {
+      const response = await fetch(`/api/brain-dumps/${id}/duplicate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to duplicate brain dump')
+      }
+
+      const { brainDump: duplicatedBrainDump } = await response.json()
+
+      // Add to local state with counts
+      set(state => ({
+        brainDumps: [duplicatedBrainDump, ...state.brainDumps],
+        isLoading: false
+      }))
+
+      // Switch to the duplicated brain dump
+      await get().switchBrainDump(duplicatedBrainDump.id)
+
+      return duplicatedBrainDump.id
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to duplicate brain dump',
         isLoading: false
       })
       throw error

@@ -7,7 +7,7 @@
 
 ## 1. Executive Summary
 
-This PRD defines the AI processing pipeline for the Brain Dump Canvas application, specifying how different AI models will enhance user-created ideas through summarization, grammar improvement, embedding generation, and semantic analysis. The pipeline is designed for full user control, transparency, and incremental processing.
+This PRD defines the AI processing pipeline for the Brain Dump Canvas application, specifying how different AI models will enhance user-created ideas through summarization, embedding generation, and semantic analysis. The pipeline is designed for full user control, transparency, and incremental processing.
 
 ## 2. Core Objectives
 
@@ -37,42 +37,10 @@ This PRD defines the AI processing pipeline for the Brain Dump Canvas applicatio
 
 ### 3.2 Individual AI Processing Nodes
 
-#### **Node 1: Grammar & Style Cleaning**
-- **Purpose**: Improve readability and fix grammatical errors
-- **Model**: OpenAI GPT-4 Turbo
-- **Input**: Raw user text
-- **Output**: Cleaned text with improved grammar
-- **Trigger**: Automatic for all text input
-- **User Control**: Can disable, can revert to original
-- **Processing Time**: 1-2 seconds
-- **Cost**: ~$0.001 per idea
-
-**API Specification**:
-```typescript
-interface GrammarCleaningRequest {
-  originalText: string
-  userPreferences: {
-    preserveStyle: boolean    // Keep casual tone vs formal
-    preserveLength: boolean   // Maintain original length
-    language: string         // Target language
-  }
-}
-
-interface GrammarCleaningResponse {
-  cleanedText: string
-  changes: Array<{
-    original: string
-    corrected: string
-    reason: string
-  }>
-  confidence: number
-}
-```
-
-#### **Node 2: Content Summarization**
+#### **Node 1: Content Summarization**
 - **Purpose**: Generate concise, searchable summaries
 - **Model**: OpenAI GPT-4 Turbo
-- **Input**: Cleaned text (from Node 1) or original text
+- **Input**: Original user text
 - **Output**: 1-2 sentence summary
 - **Trigger**: Automatic for text > 50 characters
 - **User Control**: Can edit summary, regenerate, or disable
@@ -96,10 +64,10 @@ interface SummarizationResponse {
 }
 ```
 
-#### **Node 3: Vector Embedding Generation**
+#### **Node 2: Vector Embedding Generation**
 - **Purpose**: Enable semantic search and idea clustering
 - **Model**: OpenAI text-embedding-3-small
-- **Input**: Final processed text (post-grammar cleaning)
+- **Input**: Original user text
 - **Output**: 1536-dimensional vector
 - **Trigger**: Automatic for all processed ideas
 - **User Control**: Can regenerate if text changes significantly
@@ -131,7 +99,7 @@ interface EmbeddingResponse {
 - Background workers and API routes call helpers such as `summarizeText` and `createEmbedding` to ensure consistent prompts, models, and logging across nodes.
 - Usage statistics returned from the helpers include token counts and computed cost, enabling unified reporting in `ai_operations`.
 
-#### **Node 4: Semantic Analysis & Tagging**
+#### **Node 3: Semantic Analysis & Tagging**
 - **Purpose**: Auto-generate tags and detect themes/categories
 - **Model**: OpenAI GPT-4 Turbo
 - **Input**: Processed text and existing brain dump context
@@ -173,7 +141,6 @@ interface SemanticAnalysisResponse {
 type ProcessingState = 
   | 'pending'           // Just created, not processed
   | 'processing'        // Currently being processed
-  | 'grammar-complete'  // Grammar cleaning done
   | 'summary-complete'  // Summarization done
   | 'embedding-complete'// Embedding generated
   | 'analysis-complete' // Semantic analysis done
@@ -186,14 +153,13 @@ type ProcessingState =
 ```sql
 -- Add to ideas table
 ALTER TABLE ideas ADD COLUMN processing_state VARCHAR(20) DEFAULT 'pending';
-ALTER TABLE ideas ADD COLUMN original_text TEXT; -- Store original before grammar cleaning
 ALTER TABLE ideas ADD COLUMN ai_metadata JSONB; -- Store AI processing metadata
 
 -- AI processing log table
 CREATE TABLE ai_processing_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   idea_id UUID REFERENCES ideas(id) ON DELETE CASCADE,
-  node_type VARCHAR(50) NOT NULL, -- 'grammar', 'summary', 'embedding', 'analysis'
+  node_type VARCHAR(50) NOT NULL, -- 'summary', 'embedding', 'analysis'
   input_text TEXT NOT NULL,
   output_data JSONB NOT NULL,
   model_used VARCHAR(100) NOT NULL,
@@ -211,12 +177,10 @@ CREATE TABLE ai_processing_log (
 #### **Global Settings (Settings Modal)**
 ```typescript
 interface AISettings {
-  enableGrammarCleaning: boolean
   enableSummarization: boolean
   enableEmbedding: boolean
   enableSemanticAnalysis: boolean
   
-  grammarStyle: 'preserve' | 'improve' | 'formal'
   summaryLength: 'short' | 'medium' | 'long'
   autoProcessing: boolean          // Process automatically vs manual trigger
   
@@ -237,16 +201,12 @@ interface IdeaAIControls {
   
   // Manual controls
   actions: {
-    reprocessGrammar: () => void
     regenerateSummary: () => void
-    revertToOriginal: () => void
     skipAIProcessing: () => void
   }
   
   // Show AI changes
   changes: {
-    originalText: string
-    currentText: string
     summary: string
     suggestedTags: string[]
   }
@@ -275,7 +235,6 @@ interface IdeaAIControls {
 
 ```
 app/api/ai/
-├── grammar/route.ts         # Grammar cleaning endpoint
 ├── summarize/route.ts       # Summarization endpoint  
 ├── embeddings/route.ts      # Vector embedding generation
 ├── analyze/route.ts         # Semantic analysis
@@ -291,7 +250,7 @@ interface ProcessingJob {
   id: string
   ideaId: string
   brainDumpId: string
-  steps: ('grammar' | 'summary' | 'embedding' | 'analysis')[]
+  steps: ('summary' | 'embedding' | 'analysis')[]
   priority: 'high' | 'normal' | 'low'
   retryCount: number
   maxRetries: number
@@ -329,7 +288,6 @@ interface RetryConfig {
 ```
 
 #### **Fallback Behaviors**
-- **Grammar cleaning fails**: Use original text, mark as "original"
 - **Summarization fails**: Generate simple truncation
 - **Embedding fails**: Skip semantic features, log for manual retry
 - **Analysis fails**: Skip tags and relationships
@@ -339,15 +297,14 @@ interface RetryConfig {
 ### 7.1 Cost Estimation
 ```
 Average costs per idea (USD):
-- Grammar cleaning: $0.001
 - Summarization: $0.002  
 - Embedding: $0.0001
 - Semantic analysis: $0.001
-Total per idea: ~$0.0041
+Total per idea: ~$0.0031
 
 Expected monthly usage (100 active users, 50 ideas/user):
 - Total ideas: 5,000
-- Total cost: ~$20.50/month
+- Total cost: ~$15.50/month
 ```
 
 ### 7.2 Optimization Strategies
@@ -372,7 +329,6 @@ Expected monthly usage (100 active users, 50 ideas/user):
 ## 9. Implementation Phases
 
 ### Phase 1: Core Pipeline (Week 1)
-- [ ] Grammar cleaning API endpoint
 - [ ] Summarization API endpoint
 - [ ] Basic queue processing
 - [ ] Database schema updates

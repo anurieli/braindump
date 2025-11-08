@@ -70,7 +70,6 @@ Brain Dump Canvas is a full-stack web application built with Next.js, PostgreSQL
 ### AI Services
 - **Summarization**: OpenAI GPT-4
 - **Embeddings**: OpenAI text-embedding-3-small (1536 dimensions)
-- **Grammar**: Simple rule-based (or LanguageTool API)
 
 ---
 
@@ -328,7 +327,6 @@ Return to Frontend (optimistic UI)
 Background Jobs (async):
     ├─ Summarization (if text > 50 chars)
     ├─ Embedding Generation
-    ├─ Grammar Cleaning
     └─ Metadata Extraction
     ↓
 Update Idea (state: 'ready')
@@ -403,71 +401,7 @@ async function generateEmbedding(ideaId: string, text: string) {
 - Retry logic: 3 attempts with exponential backoff
 - Failure behavior: Log error, continue without embedding
 
-### 4. Grammar Cleaning Node
-
-**Trigger**: Every idea (before summarization)
-
-**Process**:
-```typescript
-async function cleanGrammar(text: string): Promise<string> {
-  // Simple rule-based cleaning for MVP
-  let cleaned = text.trim();
-  
-  // Capitalize first letter
-  cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-  
-  // Add period if missing
-  if (!/[.!?]$/.test(cleaned)) {
-    cleaned += '.';
-  }
-  
-  // Fix common typos (basic)
-  cleaned = cleaned.replace(/\s+/g, ' '); // Multiple spaces
-  cleaned = cleaned.replace(/\s([.,!?])/g, '$1'); // Space before punctuation
-  
-  return cleaned;
-}
-
-// Optional: Use LanguageTool API for advanced grammar
-async function cleanGrammarAdvanced(text: string): Promise<string> {
-  try {
-    const response = await fetch('https://api.languagetool.org/v2/check', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        text,
-        language: 'en-US'
-      })
-    });
-    
-    const data = await response.json();
-    
-    // Apply suggestions
-    let cleaned = text;
-    for (const match of data.matches.reverse()) {
-      if (match.replacements.length > 0) {
-        const replacement = match.replacements[0].value;
-        cleaned = cleaned.substring(0, match.offset) + 
-                  replacement + 
-                  cleaned.substring(match.offset + match.length);
-      }
-    }
-    
-    return cleaned;
-  } catch (error) {
-    console.error('Grammar cleaning failed:', error);
-    return text; // Fallback to original
-  }
-}
-```
-
-**Configuration** (Controllable):
-- Use basic or advanced grammar cleaning
-- LanguageTool API key (if using advanced)
-- Rules to apply (capitalization, punctuation, typos)
-- Failure behavior: Return original text
-
-### 5. Metadata Extraction Node
+### 4. Metadata Extraction Node
 
 **Trigger**: Every idea (detect URLs, keywords, etc.)
 
@@ -514,7 +448,7 @@ async function extractMetadata(text: string, attachments: any[]) {
 // lib/queue.ts
 type Job = {
   id: string;
-  type: 'summarize' | 'embed' | 'clean_grammar';
+  type: 'summarize' | 'embed';
   data: any;
 };
 
@@ -548,9 +482,6 @@ class JobQueue {
             break;
           case 'embed':
             await generateEmbedding(job.data.ideaId, job.data.text);
-            break;
-          case 'clean_grammar':
-            // Handle grammar cleaning
             break;
         }
       } catch (error) {

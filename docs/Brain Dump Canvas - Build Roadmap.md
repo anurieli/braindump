@@ -151,7 +151,7 @@ This roadmap breaks down the MVP build into 6 phases over 6 weeks. Each phase bu
 
 ## Phase 3: AI Processing (Week 3)
 
-**Goal**: Implement summarization, embeddings, and grammar cleaning
+**Goal**: Implement summarization and embeddings
 
 ### Deliverables
 
@@ -167,13 +167,6 @@ This roadmap breaks down the MVP build into 6 phases over 6 weeks. Each phase bu
 - Call OpenAI Embeddings API (text-embedding-3-small)
 - Store 1536-dimension vector in database
 - Handle failures gracefully (log, continue)
-
-**Grammar Cleaning**:
-- Apply basic grammar rules before summarization
-- Capitalize first letter
-- Add period if missing
-- Fix spacing issues
-- Don't change meaning
 
 **Background Jobs**:
 - Simple in-memory job queue
@@ -198,7 +191,6 @@ This roadmap breaks down the MVP build into 6 phases over 6 weeks. Each phase bu
 - [ ] Long ideas (>50 chars) are automatically summarized
 - [ ] Summary appears within 5 seconds
 - [ ] Embeddings generated for all ideas
-- [ ] Grammar cleaning works without changing meaning
 - [ ] API failures don't block user
 - [ ] Fallback to truncation works
 - [ ] Idea states update correctly
@@ -210,8 +202,7 @@ This roadmap breaks down the MVP build into 6 phases over 6 weeks. Each phase bu
 2. Build job queue system
 3. Implement summarization function
 4. Implement embedding generation function
-5. Implement grammar cleaning function
-6. Create background worker
+5. Create background worker
 7. Add retry logic for API calls
 8. Implement fallback mechanisms
 9. Add idea state management
