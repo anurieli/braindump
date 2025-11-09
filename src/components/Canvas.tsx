@@ -45,6 +45,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   const isSelecting = useStore(state => state.isSelecting);
   const selectedIdeaIds = useStore(state => state.selectedIdeaIds);
   const selectedEdgeIds = useStore(state => state.selectedEdgeIds);
+  const activeModal = useStore(state => state.activeModal);
   
   const updateViewport = useStore(state => state.updateViewport);
   const setSelecting = useStore(state => state.setSelecting);
@@ -123,6 +124,9 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   // Handle mouse down
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (!currentBrainDump) return;
+    
+    // Prevent canvas interactions when help modal is open
+    if (activeModal === 'help') return;
 
     const shouldPan =
       e.button === 1 ||
@@ -159,11 +163,14 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
         clearSelection();
       }
     }
-  }, [viewport, currentBrainDump, setPanning, setSelecting, setSelectionBox, clearSelection]);
+  }, [viewport, currentBrainDump, activeModal, setPanning, setSelecting, setSelectionBox, clearSelection]);
 
   // Handle mouse move
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!currentBrainDump) return;
+    
+    // Prevent canvas interactions when help modal is open
+    if (activeModal === 'help') return;
 
     if (isPanningRef.current) {
       const dx = e.clientX - lastMousePosRef.current.x;
@@ -249,7 +256,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
       setSelection(selectedNodeIds);
       setEdgeSelection(selectedEdgeIds);
     }
-  }, [viewport, updateViewport, selectionBox, setSelectionBox, currentBrainDump, currentBrainDumpId, ideas, edges, setSelection, setEdgeSelection]);
+  }, [viewport, updateViewport, selectionBox, activeModal, setSelectionBox, currentBrainDump, currentBrainDumpId, ideas, edges, setSelection, setEdgeSelection]);
 
   // Handle mouse up
   const handleMouseUp = useCallback(() => {
@@ -271,6 +278,9 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
     
     if (!currentBrainDump) return;
     
+    // Prevent canvas interactions when help modal is open
+    if (activeModal === 'help') return;
+    
     // Check if drag contains files
     const hasFiles = e.dataTransfer?.types.includes('Files');
     if (hasFiles) {
@@ -289,7 +299,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
         setDragOverPosition(canvasPoint);
       }
     }
-  }, [currentBrainDump, viewport]);
+  }, [currentBrainDump, activeModal, viewport]);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -369,6 +379,9 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     if (!currentBrainDump) return;
     
+    // Prevent canvas interactions when help modal is open
+    if (activeModal === 'help') return;
+    
     // Don't trigger on UI elements or when in special modes
     if (isPanning || isSelecting || isCreatingConnection) return;
     
@@ -382,7 +395,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
     
     e.preventDefault();
     e.stopPropagation();
-  }, [currentBrainDump, isPanning, isSelecting, isCreatingConnection, showQuickEditor]);
+  }, [currentBrainDump, activeModal, isPanning, isSelecting, isCreatingConnection, showQuickEditor]);
 
   // Handle wheel (zoom) - must use native event listener with passive: false
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -554,7 +567,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   return (
     <div
       ref={canvasRef}
-      className="relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing"
+      className={`relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing ${activeModal === 'help' ? 'pointer-events-none' : ''}`}
       style={themeBackground}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}

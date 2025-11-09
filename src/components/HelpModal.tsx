@@ -242,8 +242,16 @@ export default function HelpModal() {
   ]
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4" 
+      onClick={closeModal}
+      style={{ pointerEvents: 'auto' }}
+    >
+      <div 
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden relative z-[10000]" 
+        onClick={(e) => e.stopPropagation()}
+        style={{ pointerEvents: 'auto' }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-3">
@@ -251,9 +259,13 @@ export default function HelpModal() {
             Brain Dump Help Guide
           </h2>
           <button
-            onClick={closeModal}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-2"
+            onClick={(e) => {
+              e.stopPropagation();
+              closeModal();
+            }}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-2 relative z-[10001]"
             title="Close (Esc)"
+            style={{ pointerEvents: 'auto' }}
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -311,8 +323,12 @@ export default function HelpModal() {
               💡 Pro tip: Use the keyboard shortcuts panel (⌨️) for quick reference
             </p>
             <button
-              onClick={closeModal}
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeModal();
+              }}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium relative z-[10001]"
+              style={{ pointerEvents: 'auto' }}
             >
               Got it!
             </button>
@@ -322,4 +338,3 @@ export default function HelpModal() {
     </div>
   )
 }
-

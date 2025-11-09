@@ -27,6 +27,13 @@ export interface BrainDump {
   theme?: ThemeType;
   createdAt: number;
   updatedAt: number;
+  idea_count?: number;
+  edge_count?: number;
+  created_at?: string;
+  updated_at?: string;
+  viewport_x?: number;
+  viewport_y?: number;
+  viewport_zoom?: number;
 }
 
 export interface Idea {
@@ -149,4 +156,4 @@ export interface EdgeDB {
   updated_at: string;
 }
 
-export type Modal = 'settings' | 'shortcuts' | 'idea-details' | 'edge-creation' | 'help' | null;
+export type Modal = 'settings' | 'shortcuts' | 'idea-details' | 'edge-creation' | null;

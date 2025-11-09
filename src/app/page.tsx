@@ -9,8 +9,6 @@ import CanvasHeader from '@/components/CanvasHeader'
 import EmptyState from '@/components/EmptyState'
 import InputBox, { InputBoxHandle } from '@/components/InputBox'
 import SidePanel from '@/components/SidePanel'
-import Toolbar from '@/components/Toolbar'
-import ControlPanel, { KeyboardShortcutsButton } from '@/components/ControlPanel'
 import SettingsModal from '@/components/SettingsModal'
 import ShortcutsPanel from '@/components/ShortcutsPanel'
 import { useGlobalKeyboardShortcuts } from '@/hooks/useGlobalKeyboardShortcuts'
@@ -123,18 +121,6 @@ export default function Home() {
             {/* Input Box */}
             <InputBox ref={inputBoxRef} />
 
-            {/* Toolbar */}
-            <Toolbar />
-
-            {/* Control Panel with Undo/Redo */}
-            <div className="absolute top-6 right-[340px] z-50">
-              <ControlPanel />
-            </div>
-
-            {/* Keyboard Shortcuts Button */}
-            <div className="absolute top-6 right-[280px] z-50">
-              <KeyboardShortcutsButton />
-            </div>
           </>
         )}
 

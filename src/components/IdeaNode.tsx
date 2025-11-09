@@ -56,6 +56,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const deleteEdge = useStore(state => state.deleteEdge);
   const setDraggedIdeaId = useStore(state => state.setDraggedIdeaId);
   const setDragHoverTargetId = useStore(state => state.setDragHoverTargetId);
+  const activeModal = useStore(state => state.activeModal);
   
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -198,6 +199,9 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   }, [hoveredNodeId, isCreatingConnection, connectionSourceId, idea.id, touchedNodesInConnection, currentBrainDumpId]);
   
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Prevent dragging when help modal is open
+    if (activeModal === 'help') return;
+    
     // Don't handle if clicking on the connection handle
     if ((e.target as HTMLElement).closest('.connection-handle')) {
       return;
@@ -271,7 +275,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         setSelection([idea.id]);
       }
     }
-  }, [idea.id, idea.position_x, idea.position_y, isSelected, openModal, addToSelection, setSelection, removeFromSelection, selectIdea, selectedIdeaIds, ideas, currentBrainDumpId, isCreatingConnection, connectionSourceId]);
+  }, [idea.id, idea.position_x, idea.position_y, isSelected, activeModal, openModal, addToSelection, setSelection, removeFromSelection, selectIdea, selectedIdeaIds, ideas, currentBrainDumpId, isCreatingConnection, connectionSourceId]);
   
   // Use document-level mouse events for proper dragging
   useEffect(() => {

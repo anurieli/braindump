@@ -52,3 +52,5 @@ const { imageUrl, cost } = await response.json()
 - Costs are tracked automatically in the usage object
 
 
+
+

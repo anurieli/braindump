@@ -31,6 +31,7 @@ export default function Idea({
   const ideas = useStore(state => state.ideas)
   const selectedIdeaIds = useStore(state => state.selectedIdeaIds)
   const setSelection = useStore(state => state.setSelection)
+  const activeModal = useStore(state => state.activeModal)
 
   // Check if this idea is selected (using new multi-selection system)
   const isMultiSelected = useIsIdeaSelected(idea.id)
@@ -241,7 +242,7 @@ export default function Idea({
       ref={groupRef}
       x={idea.x || 0}
       y={idea.y || 0}
-      draggable={true}
+      draggable={activeModal !== 'help'}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}

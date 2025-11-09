@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useMemo } from 'react';
-import { useStore } from '@/store';
+import { useMemo, useState } from 'react';
+import { HelpCircle, Edit2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Edit2, HelpCircle } from 'lucide-react';
+import Toolbar from '@/components/Toolbar';
+import { KeyboardShortcutsButton } from '@/components/ControlPanel';
+import { useStore } from '@/store';
 
 export default function CanvasHeader() {
   // Use stable selectors to avoid infinite loops
@@ -23,8 +25,17 @@ export default function CanvasHeader() {
   
   if (!currentBrainDump) return null;
   
-  const ideaCount = Array.isArray(ideas) ? ideas.length : 0;
-  const edgeCount = Array.isArray(edges) ? edges.length : 0;
+  const ideaCount = useMemo(() => {
+    if (!currentBrainDumpId) return 0;
+    const ideasArray = Array.isArray(ideas) ? ideas : Object.values(ideas || {});
+    return ideasArray.filter((idea: any) => idea.brain_dump_id === currentBrainDumpId).length;
+  }, [ideas, currentBrainDumpId]);
+
+  const edgeCount = useMemo(() => {
+    if (!currentBrainDumpId) return 0;
+    const edgesArray = Array.isArray(edges) ? edges : Object.values(edges || {});
+    return edgesArray.filter((edge: any) => edge.brain_dump_id === currentBrainDumpId).length;
+  }, [edges, currentBrainDumpId]);
   
   const handleStartEdit = () => {
     setIsEditing(true);
@@ -39,9 +50,9 @@ export default function CanvasHeader() {
   };
   
   return (
-    <div className="absolute top-6 left-6 z-40">
-      <div className="liquid-glass rounded-2xl px-6 py-3 shadow-2xl">
-        <div className="flex items-center gap-4">
+    <div className="absolute top-6 left-6 right-6 z-50">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="liquid-glass rounded-2xl px-6 py-3 shadow-2xl flex flex-wrap items-center gap-4">
           {/* Brain Dump Name */}
           <div className="flex items-center gap-2">
             {isEditing ? (
@@ -68,13 +79,6 @@ export default function CanvasHeader() {
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
-                <button
-                  onClick={() => openModal('help')}
-                  className="p-1 hover:bg-current/10 rounded transition-colors ml-1"
-                  title="Help"
-                >
-                  <HelpCircle className="w-4 h-4" />
-                </button>
               </>
             )}
           </div>
@@ -88,6 +92,21 @@ export default function CanvasHeader() {
               <span className="font-medium">{edgeCount}</span> {edgeCount === 1 ? 'connection' : 'connections'}
             </div>
           </div>
+        </div>
+
+        {/* Right-side Controls */}
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <Toolbar />
+
+          <KeyboardShortcutsButton />
+
+          <button
+            onClick={() => openModal('help')}
+            className="liquid-glass rounded-2xl shadow-2xl p-2 hover:bg-current/10 transition-colors"
+            title="Help"
+          >
+            <HelpCircle className="w-5 h-5" />
+          </button>
         </div>
       </div>
     </div>
