@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '@/store';
 import { Input } from '@/components/ui/input';
-import { Edit2 } from 'lucide-react';
+import { Edit2, HelpCircle } from 'lucide-react';
 
 export default function CanvasHeader() {
   // Use stable selectors to avoid infinite loops
@@ -16,6 +16,7 @@ export default function CanvasHeader() {
   const updateBrainDumpName = useStore(state => state.updateBrainDumpName);
   const ideas = useStore(state => state.ideas);
   const edges = useStore(state => state.edges);
+  const openModal = useStore(state => state.openModal);
   
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
@@ -66,6 +67,13 @@ export default function CanvasHeader() {
                   title="Rename"
                 >
                   <Edit2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => openModal('help')}
+                  className="p-1 hover:bg-current/10 rounded transition-colors ml-1"
+                  title="Help"
+                >
+                  <HelpCircle className="w-4 h-4" />
                 </button>
               </>
             )}

@@ -5,6 +5,26 @@ import { useStore, undo, redo, canUndo, canRedo } from '@/store'
 import { Undo2, Redo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
+export function KeyboardShortcutsButton() {
+  const openModal = useStore(state => state.openModal)
+
+  const handleOpenShortcuts = () => {
+    openModal('shortcuts')
+  }
+
+  return (
+    <button
+      onClick={handleOpenShortcuts}
+      className="liquid-glass rounded-2xl shadow-2xl p-2 hover:bg-current/10 transition-colors"
+      title="Keyboard Shortcuts"
+    >
+      <div className="text-purple-500 text-lg">
+        ⌨️
+      </div>
+    </button>
+  )
+}
+
 export default function ControlPanel() {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)

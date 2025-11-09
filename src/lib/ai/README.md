@@ -51,3 +51,4 @@ const { imageUrl, cost } = await response.json()
 - HD costs more but provides better quality
 - Costs are tracked automatically in the usage object
 
+

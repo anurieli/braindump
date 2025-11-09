@@ -12,6 +12,7 @@ import ConnectionLine from './ConnectionLine';
 import DetailModal from './DetailModal';
 import BatchActions from './BatchActions';
 import FileDropModal from './FileDropModal';
+import HelpModal from './HelpModal';
 import QuickIdeaInput from './QuickIdeaInput';
 import type { InputBoxHandle } from './InputBox';
 
@@ -627,7 +628,10 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
       
       {/* Detail Modal */}
       <DetailModal />
-      
+
+      {/* Help Modal */}
+      <HelpModal />
+
       {/* File Drop Modal */}
       <FileDropModal
         isOpen={!!pendingFile}

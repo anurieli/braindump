@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { useEffect } from 'react'
+import { useStore } from '@/store'
 
 interface ShortcutItem {
   key: string
@@ -14,8 +14,26 @@ interface ShortcutCategory {
 }
 
 export default function ShortcutsPanel() {
-  const [isExpanded, setIsExpanded] = useState(false)
-  const [selectedCategory, setSelectedCategory] = useState<string>('Ideas & Selection')
+  const activeModal = useStore(state => state.activeModal)
+  const closeModal = useStore(state => state.closeModal)
+
+  const isOpen = activeModal === 'shortcuts'
+
+  // Close modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        closeModal()
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown)
+      return () => document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen, closeModal])
+
+  if (!isOpen) return null
 
   const shortcuts: ShortcutCategory[] = [
     {
@@ -63,78 +81,65 @@ export default function ShortcutsPanel() {
     }
   ]
 
-  const selectedCategoryData = shortcuts.find(cat => cat.category === selectedCategory)
-  const visibleShortcuts = isExpanded 
-    ? selectedCategoryData?.items || [] 
-    : (selectedCategoryData?.items.slice(0, 3) || [])
-
   return (
-    <div className="fixed top-4 right-4 z-40 max-w-sm">
-      <div className="liquid-glass rounded-2xl shadow-2xl border border-current/10 overflow-hidden">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
         {/* Header */}
-        <div className="px-4 py-3 border-b border-current/10">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+            <span>⌨️</span>
+            Keyboard Shortcuts
+          </h2>
+          <button
+            onClick={closeModal}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            title="Close (Esc)"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 overflow-y-auto max-h-[60vh]">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {shortcuts.map((category) => (
+              <div key={category.category} className="space-y-3">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-600 pb-2">
+                  {category.category}
+                </h3>
+                <div className="space-y-2">
+                  {category.items.map((shortcut, index) => (
+                    <div key={index} className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700 dark:text-gray-300 flex-1 mr-4">
+                        {shortcut.description}
+                      </span>
+                      <kbd className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-xs font-mono whitespace-nowrap border border-gray-300 dark:border-gray-600">
+                        {shortcut.key}
+                      </kbd>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600 rounded-b-lg">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">⌨️</span>
-              <h3 className="text-sm font-semibold">Shortcuts</h3>
-            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              💡 Shortcuts work globally except in input fields
+            </p>
             <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="p-1 hover:bg-current/10 rounded transition-colors"
-              title={isExpanded ? 'Collapse' : 'Expand'}
+              onClick={closeModal}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
             >
-              {isExpanded ? (
-                <ChevronUp className="w-4 h-4" />
-              ) : (
-                <ChevronDown className="w-4 h-4" />
-              )}
+              Got it
             </button>
           </div>
         </div>
-
-        {/* Category Selector */}
-        <div className="px-4 py-2 border-b border-current/10">
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="w-full bg-transparent text-xs border border-current/20 rounded px-2 py-1 focus:outline-none focus:border-current/40"
-          >
-            {shortcuts.map((category) => (
-              <option key={category.category} value={category.category}>
-                {category.category}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Shortcuts List */}
-        <div className="px-4 py-2 space-y-1.5">
-          {visibleShortcuts.map((shortcut, index) => (
-            <div key={index} className="flex items-center justify-between text-xs">
-              <span className="text-current/80 flex-1 mr-2 truncate">
-                {shortcut.description}
-              </span>
-              <kbd className="bg-current/10 px-1.5 py-0.5 rounded text-xs font-mono whitespace-nowrap">
-                {shortcut.key}
-              </kbd>
-            </div>
-          ))}
-          
-          {!isExpanded && selectedCategoryData && selectedCategoryData.items.length > 3 && (
-            <div className="text-xs text-current/60 pt-1 border-t border-current/10">
-              +{selectedCategoryData.items.length - 3} more shortcuts
-            </div>
-          )}
-        </div>
-
-        {/* Footer tip when expanded */}
-        {isExpanded && (
-          <div className="px-4 py-2 border-t border-current/10 bg-current/5">
-            <p className="text-xs text-current/60">
-              💡 Shortcuts work globally except in input fields
-            </p>
-          </div>
-        )}
       </div>
     </div>
   )
