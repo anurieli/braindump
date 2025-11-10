@@ -12,8 +12,7 @@ import {
   Trash2, 
   Edit2,
   LogOut,
-  Brain,
-  Check
+  Brain
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -240,14 +239,6 @@ export default function SidePanel() {
                   }
                 }}
               >
-                {/* Active indicator badge */}
-                {isActive && (
-                  <div className={`absolute bg-purple-500 rounded-full flex items-center justify-center ${
-                    isSidebarOpen ? 'top-3 right-3 w-6 h-6' : 'top-1 right-1 w-3 h-3'
-                  }`}>
-                    <Check className={`text-white ${isSidebarOpen ? 'w-4 h-4' : 'w-2 h-2'}`} />
-                  </div>
-                )}
                 
                 {isSidebarOpen ? (
                   isEditing ? (
