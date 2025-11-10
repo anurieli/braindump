@@ -40,6 +40,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId);
   const draggedIdeaId = useStore(state => state.draggedIdeaId);
   const dragHoverTargetId = useStore(state => state.dragHoverTargetId);
+  const isCommandKeyPressed = useStore(state => state.isCommandKeyPressed);
   
   const updateIdeaPosition = useStore(state => state.updateIdeaPosition);
   const openModal = useStore(state => state.openModal);
@@ -56,6 +57,8 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const deleteEdge = useStore(state => state.deleteEdge);
   const setDraggedIdeaId = useStore(state => state.setDraggedIdeaId);
   const setDragHoverTargetId = useStore(state => state.setDragHoverTargetId);
+  const showShortcutAssistant = useStore(state => state.showShortcutAssistant);
+  const hideShortcutAssistant = useStore(state => state.hideShortcutAssistant);
   
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -227,6 +230,10 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     setIsDragging(true);
     setDraggedIdeaId(idea.id);
     console.log('🚀 Started dragging idea:', idea.id);
+    
+    // Show shortcut assistant
+    showShortcutAssistant('Hold Command to create edges while you touch them');
+    
     dragStartRef.current = {
       x: e.clientX,
       y: e.clientY,
@@ -271,7 +278,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         setSelection([idea.id]);
       }
     }
-  }, [idea.id, idea.position_x, idea.position_y, isSelected, openModal, addToSelection, setSelection, removeFromSelection, selectIdea, selectedIdeaIds, ideas, currentBrainDumpId, isCreatingConnection, connectionSourceId]);
+  }, [idea.id, idea.position_x, idea.position_y, isSelected, openModal, addToSelection, setSelection, removeFromSelection, selectIdea, selectedIdeaIds, ideas, currentBrainDumpId, isCreatingConnection, connectionSourceId, setDraggedIdeaId, showShortcutAssistant]);
   
   // Use document-level mouse events for proper dragging
   useEffect(() => {
@@ -311,8 +318,8 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
           const targetIdeaId = (ideaElementUnderMouse as HTMLElement).dataset.ideaId;
           const previousTargetId = dragHoverTargetId;
           
-          // Only process if we're hovering over a new target
-          if (targetIdeaId && targetIdeaId !== previousTargetId) {
+          // Only process if we're hovering over a new target AND Command key is pressed
+          if (targetIdeaId && targetIdeaId !== previousTargetId && isCommandKeyPressed) {
             console.log(`🎯 Touch detected: ${idea.id} touching ${targetIdeaId}`);
             
             // Check if edge already exists
@@ -347,6 +354,10 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
       if (draggedIdeaId === idea.id) {
         setDraggedIdeaId(null);
         setDragHoverTargetId(null);
+        
+        // Hide shortcut assistant
+        hideShortcutAssistant();
+        
         console.log('🏁 Finished dragging idea:', idea.id);
       }
     };
@@ -358,7 +369,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
       document.removeEventListener('mousemove', handleDocumentMouseMove);
       document.removeEventListener('mouseup', handleDocumentMouseUp);
     };
-  }, [isDragging, viewport.zoom, idea.id, updateIdeaPosition, isSelected, selectedIdeaIds, draggedIdeaId, dragHoverTargetId, setDraggedIdeaId, setDragHoverTargetId, edges, currentBrainDumpId, addEdge, deleteEdge]);
+  }, [isDragging, viewport.zoom, idea.id, updateIdeaPosition, isSelected, selectedIdeaIds, draggedIdeaId, dragHoverTargetId, setDraggedIdeaId, setDragHoverTargetId, edges, currentBrainDumpId, addEdge, deleteEdge, isCommandKeyPressed, hideShortcutAssistant]);
   
   const handleConnectionHandleMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();

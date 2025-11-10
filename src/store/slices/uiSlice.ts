@@ -41,6 +41,15 @@ export interface UiSlice {
     text: string
   } | null
 
+  // Shortcut assistant state
+  shortcutAssistant: {
+    isVisible: boolean
+    message: string
+  } | null
+
+  // Command key state
+  isCommandKeyPressed: boolean
+
   // Performance settings
   enableAnimations: boolean
   renderQuality: 'low' | 'medium' | 'high'
@@ -330,6 +339,25 @@ export const createUiSlice: StateCreator<
         text
       } : null
     }))
+  },
+
+  // Shortcut assistant actions
+  showShortcutAssistant: (message: string) => {
+    set({
+      shortcutAssistant: {
+        isVisible: true,
+        message
+      }
+    })
+  },
+
+  hideShortcutAssistant: () => {
+    set({ shortcutAssistant: null })
+  },
+
+  // Command key actions
+  setCommandKeyPressed: (pressed: boolean) => {
+    set({ isCommandKeyPressed: pressed })
   },
 
   // Keyboard shortcuts
