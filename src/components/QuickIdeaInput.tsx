@@ -61,6 +61,7 @@ export default function QuickIdeaInput() {
   const hideQuickEditor = useStore(state => state.hideQuickEditor)
   const updateQuickEditorText = useStore(state => state.updateQuickEditorText)
   const addIdea = useStore(state => state.addIdea)
+  const addEdge = useStore(state => state.addEdge)
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
   const theme = useStore(state => state.theme)
   const viewport = useStore(state => state.viewport)
@@ -94,27 +95,41 @@ export default function QuickIdeaInput() {
     }
 
     try {
-      // Convert screen coordinates to canvas coordinates
-      const canvasPos = screenToCanvas(
-        quickEditor.position.x,
-        quickEditor.position.y,
-        viewport.x,
-        viewport.y,
-        viewport.zoom
-      )
+      // Determine position - use pending connection target position if available
+      let targetPos = { x: quickEditor.position.x, y: quickEditor.position.y }
+      
+      if (quickEditor.pendingConnection) {
+        // Use the target position from the pending connection
+        targetPos = quickEditor.pendingConnection.targetPosition
+      } else {
+        // Convert screen coordinates to canvas coordinates for regular quick ideas
+        targetPos = screenToCanvas(
+          quickEditor.position.x,
+          quickEditor.position.y,
+          viewport.x,
+          viewport.y,
+          viewport.zoom
+        )
+      }
 
-      // Create idea at canvas position
-      await addIdea(quickEditor.text.trim(), { 
-        x: canvasPos.x - 100, // Center the idea (assuming 200px width)
-        y: canvasPos.y - 50   // Center the idea (assuming 100px height)
+      // Create idea at target position
+      const newIdeaId = await addIdea(quickEditor.text.trim(), { 
+        x: targetPos.x - 100, // Center the idea (assuming 200px width)
+        y: targetPos.y - 50   // Center the idea (assuming 100px height)
       })
+
+      // If there's a pending connection, create the edge
+      if (quickEditor.pendingConnection && newIdeaId) {
+        await addEdge(quickEditor.pendingConnection.sourceId, newIdeaId, 'related_to')
+        console.log('✅ Created edge from', quickEditor.pendingConnection.sourceId, 'to', newIdeaId)
+      }
 
       hideQuickEditor()
     } catch (error) {
       console.error('Failed to create quick idea:', error)
       // Keep editor open on error so user can retry
     }
-  }, [quickEditor, currentBrainDumpId, viewport, addIdea, hideQuickEditor])
+  }, [quickEditor, currentBrainDumpId, viewport, addIdea, addEdge, hideQuickEditor])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

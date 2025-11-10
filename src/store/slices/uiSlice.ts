@@ -40,6 +40,10 @@ export interface UiSlice {
     isActive: boolean
     position: { x: number; y: number }
     text: string
+    pendingConnection?: {
+      sourceId: string
+      targetPosition: { x: number; y: number }
+    }
   } | null
 
   // Shortcut assistant state
@@ -96,7 +100,7 @@ export interface UiSlice {
   setDragHoverTargetId: (id: string | null) => void
   
   // Quick editor actions
-  showQuickEditor: (x: number, y: number, initialText?: string) => void
+  showQuickEditor: (x: number, y: number, initialText?: string, pendingConnection?: { sourceId: string; targetPosition: { x: number; y: number } }) => void
   hideQuickEditor: () => void
   updateQuickEditorText: (text: string) => void
   
@@ -364,12 +368,13 @@ export const createUiSlice: StateCreator<
   },
 
   // Quick editor actions
-  showQuickEditor: (x: number, y: number, initialText = '') => {
+  showQuickEditor: (x: number, y: number, initialText = '', pendingConnection?: { sourceId: string; targetPosition: { x: number; y: number } }) => {
     set({
       quickEditor: {
         isActive: true,
         position: { x, y },
-        text: initialText
+        text: initialText,
+        pendingConnection
       }
     })
   },

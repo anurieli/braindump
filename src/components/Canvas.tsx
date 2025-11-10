@@ -12,7 +12,6 @@ import ConnectionLine from './ConnectionLine';
 import DetailModal from './DetailModal';
 import BatchActions from './BatchActions';
 import FileDropModal from './FileDropModal';
-import HelpModal from './HelpModal';
 import QuickIdeaInput from './QuickIdeaInput';
 import ShortcutAssistant from './ShortcutAssistant';
 import type { InputBoxHandle } from './InputBox';
@@ -41,13 +40,11 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
     return brainDumpTheme || globalTheme;
   }, [globalTheme, currentBrainDump]);
   const isGridVisible = useStore(state => state.isGridVisible);
-  const patternType = useStore(state => state.patternType);
   const selectionBox = useStore(state => state.selectionBox);
   const isPanning = useStore(state => state.isPanning);
   const isSelecting = useStore(state => state.isSelecting);
   const selectedIdeaIds = useStore(state => state.selectedIdeaIds);
   const selectedEdgeIds = useStore(state => state.selectedEdgeIds);
-  const activeModal = useStore(state => state.activeModal);
   
   const updateViewport = useStore(state => state.updateViewport);
   const setSelecting = useStore(state => state.setSelecting);
@@ -91,38 +88,16 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   const baseGridSize = 40;
   const scaledGridSize = baseGridSize * viewport.zoom;
 
-  const getPatternStyle = (): CSSProperties => {
-    const isDark = theme === 'dark';
-    const baseStyle = {
-      backgroundPosition: `${viewport.x}px ${viewport.y}px`,
-    };
-
-    switch (patternType) {
-      case 'grid':
-        return {
-          ...baseStyle,
-          backgroundSize: `${scaledGridSize}px ${scaledGridSize}px, ${scaledGridSize}px ${scaledGridSize}px`,
-          backgroundImage: isDark
-            ? 'linear-gradient(to right, rgba(255, 255, 255, 0.5) 1px, transparent 1px), linear-gradient(to bottom, rgba(255, 255, 255, 0.5) 1px, transparent 1px)'
-            : 'linear-gradient(to right, rgba(0, 0, 0, 0.15) 1px, transparent 1px), linear-gradient(to bottom, rgba(0, 0, 0, 0.15) 1px, transparent 1px)',
-        };
-      case 'dots':
-        return {
-          ...baseStyle,
-          backgroundSize: `${scaledGridSize}px ${scaledGridSize}px`,
-          backgroundImage: isDark
-            ? 'radial-gradient(circle, rgba(255, 255, 255, 0.6) 1px, transparent 1px)'
-            : 'radial-gradient(circle, rgba(0, 0, 0, 0.25) 1px, transparent 1px)',
-        };
-      default:
-        return baseStyle;
-    }
+  const gridStyle: CSSProperties = {
+    backgroundSize: `${scaledGridSize}px ${scaledGridSize}px, ${scaledGridSize}px ${scaledGridSize}px`,
+    backgroundPosition: `${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px`,
   };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Track Command/Meta key state
-      if (e.metaKey || e.key === 'Meta') {
+      // Track Command/Meta key state (Meta on Mac, Control on Windows/Linux)
+      if (e.metaKey || e.ctrlKey || e.key === 'Meta' || e.key === 'Control') {
+        console.log('⌨️ Command key pressed');
         setCommandKeyPressed(true);
       }
       
@@ -142,7 +117,8 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
 
     const handleKeyUp = (e: KeyboardEvent) => {
       // Track Command/Meta key state
-      if (!e.metaKey && e.key === 'Meta') {
+      if (e.key === 'Meta' || e.key === 'Control') {
+        console.log('⌨️ Command key released');
         setCommandKeyPressed(false);
       }
       
@@ -163,9 +139,6 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   // Handle mouse down
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (!currentBrainDump) return;
-    
-    // Prevent canvas interactions when help modal is open
-    if (activeModal === 'help') return;
 
     const shouldPan =
       e.button === 1 ||
@@ -202,14 +175,11 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
         clearSelection();
       }
     }
-  }, [viewport, currentBrainDump, activeModal, setPanning, setSelecting, setSelectionBox, clearSelection]);
+  }, [viewport, currentBrainDump, setPanning, setSelecting, setSelectionBox, clearSelection]);
 
   // Handle mouse move
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!currentBrainDump) return;
-    
-    // Prevent canvas interactions when help modal is open
-    if (activeModal === 'help') return;
 
     if (isPanningRef.current) {
       const dx = e.clientX - lastMousePosRef.current.x;
@@ -295,7 +265,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
       setSelection(selectedNodeIds);
       setEdgeSelection(selectedEdgeIds);
     }
-  }, [viewport, updateViewport, selectionBox, activeModal, setSelectionBox, currentBrainDump, currentBrainDumpId, ideas, edges, setSelection, setEdgeSelection]);
+  }, [viewport, updateViewport, selectionBox, setSelectionBox, currentBrainDump, currentBrainDumpId, ideas, edges, setSelection, setEdgeSelection]);
 
   // Handle mouse up
   const handleMouseUp = useCallback(() => {
@@ -317,9 +287,6 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
     
     if (!currentBrainDump) return;
     
-    // Prevent canvas interactions when help modal is open
-    if (activeModal === 'help') return;
-    
     // Check if drag contains files
     const hasFiles = e.dataTransfer?.types.includes('Files');
     if (hasFiles) {
@@ -338,7 +305,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
         setDragOverPosition(canvasPoint);
       }
     }
-  }, [currentBrainDump, activeModal, viewport]);
+  }, [currentBrainDump, viewport]);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -418,9 +385,6 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     if (!currentBrainDump) return;
     
-    // Prevent canvas interactions when help modal is open
-    if (activeModal === 'help') return;
-    
     // Don't trigger on UI elements or when in special modes
     if (isPanning || isSelecting || isCreatingConnection) return;
     
@@ -434,7 +398,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
     
     e.preventDefault();
     e.stopPropagation();
-  }, [currentBrainDump, activeModal, isPanning, isSelecting, isCreatingConnection, showQuickEditor]);
+  }, [currentBrainDump, isPanning, isSelecting, isCreatingConnection, showQuickEditor]);
 
   // Handle wheel (zoom) - must use native event listener with passive: false
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -503,15 +467,55 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   // Connection handling - add global mouse up
   
   useEffect(() => {
-    const handleGlobalMouseUp = () => {
+    const handleGlobalMouseUp = async (e: MouseEvent) => {
       if (isCreatingConnection) {
+        const connectionSourceId = useStore.getState().connectionSourceId;
+        const hoveredNodeId = useStore.getState().hoveredNodeId;
+        const isCommandKeyPressed = useStore.getState().isCommandKeyPressed;
+        const hideShortcutAssistant = useStore.getState().hideShortcutAssistant;
+        const addIdea = useStore.getState().addIdea;
+        const addEdge = useStore.getState().addEdge;
+        
+        // Check if we should create a new idea (not holding Command AND not hovering over a node)
+        if (!isCommandKeyPressed && !hoveredNodeId && connectionSourceId && canvasRef.current) {
+          console.log('🆕 Creating new idea from connection without Command');
+          
+          try {
+            // Get cursor position in canvas coordinates
+            const rect = canvasRef.current.getBoundingClientRect();
+            const canvasPos = screenToCanvas(
+              e.clientX - rect.left,
+              e.clientY - rect.top,
+              viewport.x,
+              viewport.y,
+              viewport.zoom
+            );
+            
+            // Show QuickEditor with pending connection info
+            showQuickEditor(
+              e.clientX - rect.left, 
+              e.clientY - rect.top, 
+              '', // empty initial text
+              {
+                sourceId: connectionSourceId,
+                targetPosition: canvasPos
+              }
+            );
+            console.log('✅ Opened QuickEditor with pending connection from', connectionSourceId);
+          } catch (error) {
+            console.error('❌ Failed to show QuickEditor:', error);
+          }
+        }
+        
+        // Always cancel connection and hide assistant
         cancelConnection();
+        hideShortcutAssistant();
       }
     };
     
     window.addEventListener('mouseup', handleGlobalMouseUp);
     return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
-  }, [isCreatingConnection, cancelConnection]);
+  }, [isCreatingConnection, cancelConnection, viewport, showQuickEditor]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -606,7 +610,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   return (
     <div
       ref={canvasRef}
-      className={`relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing ${activeModal === 'help' ? 'pointer-events-none' : ''}`}
+      className="relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing"
       style={themeBackground}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -617,8 +621,8 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
       onDragLeave={handleDragLeave}
       onDrop={handleFileDrop}
     >
-      {/* Pattern Overlay */}
-      {isGridVisible && <div className="pattern-overlay" style={getPatternStyle()} />}
+      {/* Grid Overlay */}
+      {isGridVisible && <div className="grid-overlay" style={gridStyle} />}
       
       {/* Transform Container */}
       <div
@@ -680,10 +684,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
       
       {/* Detail Modal */}
       <DetailModal />
-
-      {/* Help Modal */}
-      <HelpModal />
-
+      
       {/* File Drop Modal */}
       <FileDropModal
         isOpen={!!pendingFile}

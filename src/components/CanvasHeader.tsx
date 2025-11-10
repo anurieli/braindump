@@ -17,7 +17,6 @@ function ControlPanelButton() {
   // Store selectors
   const viewport = useStore(state => state.viewport);
   const updateViewport = useStore(state => state.updateViewport);
-  const isGridVisible = useStore(state => state.isGridVisible);
   const patternType = useStore(state => state.patternType);
   const toggleGrid = useStore(state => state.toggleGrid);
   const theme = useStore(state => state.theme);
@@ -126,7 +125,7 @@ function ControlPanelButton() {
       {/* Control Panel Button - Only visible on mobile */}
       <button
         onClick={() => setIsOpen(true)}
-        className="liquid-glass rounded-2xl shadow-2xl p-2 hover:bg-current/10 transition-colors md:hidden"
+        className="liquid-glass rounded-2xl shadow-2xl p-2 hover:bg-current/10 transition-colors xl:hidden flex-shrink-0"
         title="Control Panel"
       >
         <SlidersHorizontal className="w-5 h-5" />
@@ -248,15 +247,15 @@ export default function CanvasHeader() {
   const currentBrainDump = useMemo(() => {
     return brainDumps.find(bd => bd.id === currentBrainDumpId) || null;
   }, [brainDumps, currentBrainDumpId]);
-
+  
   const updateBrainDumpName = useStore(state => state.updateBrainDumpName);
   const ideas = useStore(state => state.ideas);
   const edges = useStore(state => state.edges);
   const openModal = useStore(state => state.openModal);
-
+  
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
-
+  
   const ideaCount = useMemo(() => {
     if (!currentBrainDumpId) return 0;
     const ideasArray = Array.isArray(ideas) ? ideas : Object.values(ideas || {});
@@ -329,7 +328,7 @@ export default function CanvasHeader() {
         </div>
 
         {/* Right-side Controls */}
-        <div className="flex flex-wrap items-center justify-end gap-3">
+        <div className="flex items-center justify-end gap-3 ml-auto flex-nowrap">
           <Toolbar />
 
           {/* Control Panel Button - Mobile Only */}
@@ -337,7 +336,7 @@ export default function CanvasHeader() {
 
           <button
             onClick={() => openModal('help')}
-            className="liquid-glass rounded-2xl shadow-2xl p-2 hover:bg-current/10 transition-colors"
+            className="liquid-glass rounded-2xl shadow-2xl p-2 hover:bg-current/10 transition-colors flex-shrink-0"
             title="Help"
           >
             <HelpCircle className="w-5 h-5" />

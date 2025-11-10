@@ -143,8 +143,8 @@ export default function Toolbar({ className }: ToolbarProps) {
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      {/* Desktop Controls */}
-      <div className="liquid-glass hidden items-center gap-2 rounded-2xl p-2 shadow-2xl md:flex">
+      {/* Large Screen Controls */}
+      <div className="liquid-glass hidden items-center gap-2 rounded-2xl p-2 shadow-2xl xl:flex">
         {/* Undo / Redo */}
         <div className="flex items-center gap-1 border-r border-current/10 pr-2">
           <Button

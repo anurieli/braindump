@@ -373,13 +373,24 @@ User drops file → Canvas.handleFileDrop()
 Canvas
 ├── IdeaNode (type="text")
 │   └── Regular text idea UI
-└── IdeaNode (type="attachment") 
-    └── AttachmentNode
-        ├── File preview (image thumbnails or file icons)
-        ├── Download button
-        ├── Metadata display (filename, size)
-        └── All standard interactions (drag, select, connect)
+├── IdeaNode (type="attachment") 
+│   └── AttachmentNode
+│       ├── File preview (image thumbnails or file icons)
+│       ├── Download button
+│       ├── Metadata display (filename, size)
+│       └── All standard interactions (drag, select, connect)
+└── QuickIdeaInput
+    ├── Text input for new ideas
+    ├── Pending connection state (sourceId + targetPosition)
+    └── Atomic idea creation with edge relationships
 ```
+
+**QuickEditor Connection Pattern**:
+When creating ideas via edge drag (without Command key), the system uses a "pending connection" workflow:
+1. Canvas stores connection context in QuickEditor state
+2. User types idea text in QuickEditor
+3. Single atomic operation creates both idea and edge
+4. Prevents database constraint violations from empty text fields
 
 ### File Processing Features
 

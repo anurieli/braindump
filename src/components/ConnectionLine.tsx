@@ -14,6 +14,7 @@ export default function ConnectionLine() {
   const ideas = useStore(state => state.ideas);
   const edges = useStore(state => state.edges);
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId);
+  const isCommandKeyPressed = useStore(state => state.isCommandKeyPressed);
   
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -49,7 +50,8 @@ export default function ConnectionLine() {
   // Check if hovering over a node for color indication (but don't snap)
   let lineColor = '#3b82f6'; // Blue by default
   
-  if (hoveredNodeId && hoveredNodeId !== connectionSourceId) {
+  // Only change color if Command is pressed
+  if (isCommandKeyPressed && hoveredNodeId && hoveredNodeId !== connectionSourceId) {
     // Check if edge already exists
     const existingEdge = Object.values(edges).find(
       edge => edge.brain_dump_id === currentBrainDumpId &&
@@ -64,47 +66,68 @@ export default function ConnectionLine() {
     }
   }
   
+  // Show preview of new idea when NOT holding Command and NOT hovering over a node
+  const showNewIdeaPreview = !isCommandKeyPressed && !hoveredNodeId;
+  
   // Start from the center of the source node
   const sourceScreenX = sourceCenterScreenX;
   const sourceScreenY = sourceCenterScreenY;
   
   return (
-    <svg 
-      className="fixed inset-0 pointer-events-none" 
-      style={{ 
-        zIndex: 1000,
-        width: '100vw',
-        height: '100vh',
-        top: 0,
-        left: 0,
-      }}
-    >
-      <defs>
-        <marker
-          id="arrowhead-connection"
-          markerWidth="10"
-          markerHeight="10"
-          refX="9"
-          refY="3"
-          orient="auto"
-          markerUnits="strokeWidth"
-        >
-          <path d="M0,0 L0,6 L9,3 z" fill={lineColor} />
-        </marker>
-      </defs>
+    <>
+      {/* Connection Line SVG */}
+      <svg 
+        className="fixed inset-0 pointer-events-none" 
+        style={{ 
+          zIndex: 1000,
+          width: '100vw',
+          height: '100vh',
+          top: 0,
+          left: 0,
+        }}
+      >
+        <defs>
+          <marker
+            id="arrowhead-connection"
+            markerWidth="10"
+            markerHeight="10"
+            refX="9"
+            refY="3"
+            orient="auto"
+            markerUnits="strokeWidth"
+          >
+            <path d="M0,0 L0,6 L9,3 z" fill={lineColor} />
+          </marker>
+        </defs>
+        
+        {/* Main connection line */}
+        <line
+          x1={sourceScreenX}
+          y1={sourceScreenY}
+          x2={targetScreenX}
+          y2={targetScreenY}
+          stroke={lineColor}
+          strokeWidth={4}
+          strokeDasharray="8,4"
+          strokeLinecap="round"
+          markerEnd="url(#arrowhead-connection)"
+        />
+      </svg>
       
-      {/* Main connection line */}
-      <line
-        x1={sourceScreenX}
-        y1={sourceScreenY}
-        x2={targetScreenX}
-        y2={targetScreenY}
-        stroke={lineColor}
-        strokeWidth={4}
-        strokeDasharray="8,4"
-        strokeLinecap="round"
-        markerEnd="url(#arrowhead-connection)"
-      />
-    </svg>
+      {/* New Idea Preview - shown when not holding Command */}
+      {showNewIdeaPreview && (
+        <div
+          className="fixed pointer-events-none z-[1001]"
+          style={{
+            left: targetScreenX - 100,
+            top: targetScreenY - 50,
+          }}
+        >
+          <div className="w-[200px] h-[100px] border-2 border-dashed border-blue-400 bg-blue-100/20 rounded-lg backdrop-blur-sm flex items-center justify-center">
+            <p className="text-blue-600 text-sm font-medium">New Idea</p>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
