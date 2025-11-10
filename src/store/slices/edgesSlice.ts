@@ -2,6 +2,7 @@ import { StateCreator } from 'zustand'
 import { Edge, EdgeDB, EdgeType } from '@/types'
 import { supabase } from '@/lib/supabase'
 import type { StoreState } from '../index'
+import { undoRedoManager } from '../index'
 
 export interface EdgesSlice {
   // State
@@ -132,6 +133,18 @@ export const createEdgesSlice: StateCreator<
         newEdges[data.id] = data
         return { edges: newEdges }
       })
+
+      // Save history immediately for undo functionality
+      // Construct the new edges state manually since set() is async
+      const newEdges = { ...get().edges }
+      delete newEdges[tempId]
+      newEdges[data.id] = data
+
+      console.log('💾 addEdge: Saving history immediately for edge:', data.id, 'from', parentId, 'to', childId)
+      undoRedoManager.saveState({
+        ideas: get().ideas,
+        edges: get().edges
+      }, true)
 
       // Refresh brain dump counts
       if (get().refreshBrainDumpCounts) {

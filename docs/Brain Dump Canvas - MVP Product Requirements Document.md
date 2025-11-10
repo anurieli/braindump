@@ -210,24 +210,23 @@ Render canvas
 **Goal**: View and edit full idea details
 
 **Steps**:
-1. User double-clicks on idea
-2. Modal opens showing full text
-3. User sees all attachments
-4. User sees connected ideas (parents and children)
-5. User clicks "Edit" button
-6. Text becomes editable
-7. User modifies text
-8. User adds/removes attachments
-9. User clicks "Save"
-10. Modal closes
-11. Idea re-summarized if text changed significantly
-12. Canvas updates
+1. User double-clicks on idea → Inline text editing starts on canvas
+2. User can edit text directly with Enter to save or Escape to cancel
+3. User hovers over idea → Expand button appears on right side
+4. User clicks expand button → Modal opens showing full text, attachments, and connected ideas
+5. In modal: User sees all attachments and connected ideas (parents and children)
+6. User can further edit in modal if needed
+7. User clicks "Save" or closes modal
+8. Inline save commits immediately with no AI reprocessing; modal save triggers summarization when text changes significantly
+9. Canvas updates
 
 **Success Criteria**:
-- Modal opens within 100ms
-- All information clearly displayed
-- Edit mode is intuitive
-- Changes persist correctly
+- Double-click starts inline editing within 50ms
+- Inline editing works smoothly with keyboard controls
+- Expand button appears on hover with visual feedback
+- Modal opens within 100ms when expand button clicked
+- All information clearly displayed in modal
+- Changes persist correctly from both inline and modal editing, with inline edits bypassing AI pipelines
 
 ### 3.5 Multi-Workspace Flow
 
@@ -429,17 +428,23 @@ Render canvas
 **Peak View** (hover 300ms):
 - Expands to show full text
 - Max 400px wide, height auto-adjusts
-- Action buttons appear: ✎ Edit, ✕ Delete
+- Expand button appears on right side for modal access
 - Shadow increases, border highlights
 - Slight scale up (1.05x)
 - Z-index increases (appears above other ideas)
 
-**Modal View** (double-click):
+**Modal View** (expand button click):
 - Full-screen overlay (darkens background 80%)
 - Modal: 600px wide, max 80vh height
 - Shows: original text, attachments, connected ideas
 - Edit mode: text editable, attachments manageable
 - Close: X button, Close button, Escape key, click outside
+
+**Inline Editing Mode**:
+- Triggered by double-click directly on node content
+- Connection handle and expand affordance hidden while editing
+- Enter saves instantly without triggering AI summarization or embedding
+- Escape cancels edits and restores previous text
 
 **Move Idea**:
 - Click and drag idea

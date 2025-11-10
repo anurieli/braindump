@@ -8,6 +8,7 @@ import { generateEmbedding, generateSummary } from '@/lib/openai'
 import { uploadFile, validateFile } from '@/lib/file-upload'
 import { positionDebouncer } from '@/lib/debounce'
 import type { StoreState } from '../index'
+import { undoRedoManager } from '../index'
 
 export interface IdeasSlice {
   // State
@@ -20,7 +21,7 @@ export interface IdeasSlice {
   loadIdeas: (brainDumpId: string) => Promise<void>
   addIdea: (text: string, position: { x: number, y: number }) => Promise<string>
   addAttachmentIdea: (file: File, position: { x: number, y: number }, description?: string) => Promise<string>
-  updateIdeaText: (id: string, text: string) => Promise<void>
+  updateIdeaText: (id: string, text: string, options?: { skipAI?: boolean }) => Promise<void>
   updateIdeaPosition: (id: string, position: { x: number, y: number }) => void
   updateIdeaDimensions: (id: string, dimensions: { width: number, height: number }) => void
   deleteIdea: (id: string) => Promise<void>
@@ -103,16 +104,23 @@ export const createIdeasSlice: StateCreator<
 
       // Add real idea to state immediately
       set(state => ({
-        ideas: { 
-          ...state.ideas, 
-          [data.id]: data 
+        ideas: {
+          ...state.ideas,
+          [data.id]: data
         },
-        isProcessing: { 
-          ...state.isProcessing, 
-          [data.id]: needsAI 
+        isProcessing: {
+          ...state.isProcessing,
+          [data.id]: needsAI
         },
         lastPlacedIdeaPosition: { x: data.position_x, y: data.position_y }
       }))
+
+      // Save history immediately for undo functionality
+      console.log('💾 addIdea: Saving history immediately for idea:', data.id)
+      undoRedoManager.saveState({
+        ideas: get().ideas,
+        edges: get().edges
+      }, true)
 
       // Only process AI enhancements if text is long enough
       if (needsAI) {
@@ -255,32 +263,82 @@ export const createIdeasSlice: StateCreator<
     }
   },
 
-  updateIdeaText: async (id: string, text: string) => {
+  updateIdeaText: async (id: string, text: string, options: { skipAI?: boolean } = {}) => {
+    console.log('✏️ updateIdeaText called for', id, 'with text length:', text.length)
+    const { skipAI = false } = options
+
+    const currentState = get()
+    if (!currentState.ideas[id]) {
+      console.warn('Attempted to update text for non-existent idea:', id)
+      return
+    }
+
+    if (currentState.ideas[id].text === text) {
+      return
+    }
+
+    console.log('💾 updateIdeaText: Saving history immediately before text update')
+    undoRedoManager.saveState({
+      ideas: currentState.ideas,
+      edges: currentState.edges
+    }, true)
+
     // Optimistic update
     set(state => ({
       ideas: {
         ...state.ideas,
-        [id]: { ...state.ideas[id], text, state: 'generating' }
+        [id]: {
+          ...state.ideas[id],
+          text,
+          summary: skipAI ? null : state.ideas[id].summary,
+          state: skipAI ? 'ready' : 'generating'
+        }
       },
-      isProcessing: { ...state.isProcessing, [id]: true }
+      isProcessing: {
+        ...state.isProcessing,
+        [id]: skipAI ? false : true
+      }
     }))
 
     try {
+      const updatePayload: Partial<Idea> = {
+        text,
+        state: skipAI ? 'ready' : 'generating',
+        ...(skipAI ? { summary: null } : {})
+      }
+
       const { error } = await supabase
         .from('ideas')
-        .update({ text: text, state: 'generating' })
+        .update(updatePayload)
         .eq('id', id)
 
       if (error) throw error
 
-      // Process AI enhancements
-      get().processIdeaAI(id)
+      if (!skipAI) {
+        // Process AI enhancements
+        get().processIdeaAI(id)
+      }
     } catch (error) {
       console.error('Failed to update idea text:', error)
     }
   },
 
   updateIdeaPosition: (id: string, position: { x: number, y: number }) => {
+    console.log('📍 updateIdeaPosition called for', id, 'to', position)
+
+    const currentState = get()
+    if (!currentState.ideas[id]) {
+      console.warn('Attempted to update position for non-existent idea:', id)
+      return
+    }
+
+    // Save history immediately before position update
+    console.log('💾 updateIdeaPosition: Saving history immediately before position update')
+    undoRedoManager.saveState({
+      ideas: currentState.ideas,
+      edges: currentState.edges
+    }, true)
+
     // Immediate local update for smooth dragging
     set(state => ({
       ideas: {

@@ -52,6 +52,14 @@
 - **New Idea Branching**: Drag from connection handle to empty space creates new connected idea
 - **Atomic Operations**: Single workflow creates both ideas and relationships
 
+**Train-of-Thought Mode** ✅ *NEW FEATURE*
+- **Toggle Button**: Enable/disable auto-relate mode in input area
+- **Auto-Chaining**: New ideas automatically connect to selected parent and become new parent
+- **Smart Positioning**: Related ideas appear 150px below parent for visual hierarchy
+- **Single Selection**: Only one selected node acts as pending parent
+- **Navigation**: Left arrow key moves up hierarchy, ESC clears selection (mode stays active)
+- **Stream of Consciousness**: Natural thought flow with automatic relationship creation
+
 ### ✅ Canvas Navigation
 
 **Viewport Controls**

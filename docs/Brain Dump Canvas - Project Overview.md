@@ -36,6 +36,7 @@ Rapidly dump ideas into an infinite 2D canvas via a persistent input box. Each i
 
 **3. Explicit Relationships**
 - Drag one idea onto another to create parent-child edge
+- Train-of-thought mode: Automatic chaining for natural thought flow
 - Edges are labeled (depends_on, blocks, inspired_by, etc.)
 - Visual graph structure shows dependencies and hierarchies
 

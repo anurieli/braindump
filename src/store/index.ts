@@ -59,29 +59,42 @@ export const endBatch = () => {
 useStore.subscribe(
   (state) => ({ ideas: state.ideas, edges: state.edges }),
   (current) => {
+    console.log('👂 Subscription triggered - state changed')
+
     // Skip if we're in a batch operation
     if (isBatchOperation) return
-    
+
     const ideasSnapshot = JSON.stringify(current.ideas)
     const edgesSnapshot = JSON.stringify(current.edges)
-    
+
     // Only save if something actually changed
     if (ideasSnapshot !== lastIdeasSnapshot || edgesSnapshot !== lastEdgesSnapshot) {
+      console.log('📝 State actually changed, scheduling debounced save')
       lastIdeasSnapshot = ideasSnapshot
       lastEdgesSnapshot = edgesSnapshot
-      
+
       // Debounce history saves to avoid too many snapshots during rapid changes
-      if (batchTimeout) clearTimeout(batchTimeout)
-      batchTimeout = setTimeout(() => {
-        undoRedoManager.saveState({
-          ideas: JSON.parse(JSON.stringify(current.ideas)),
-          edges: JSON.parse(JSON.stringify(current.edges))
-        })
-      }, 150)
+      // Skip debounced saving if we just did an immediate save (within last 200ms)
+      const now = Date.now()
+      const timeSinceLastImmediateSave = now - (undoRedoManager as any).lastImmediateSave || 0
+      if (timeSinceLastImmediateSave > 200) {
+        if (batchTimeout) clearTimeout(batchTimeout)
+        batchTimeout = setTimeout(() => {
+          console.log('💾 Debounced save executing')
+          undoRedoManager.saveState({
+            ideas: JSON.parse(JSON.stringify(current.ideas)),
+            edges: JSON.parse(JSON.stringify(current.edges))
+          }, false)
+        }, 150)
+      } else {
+        console.log('⏰ Skipping debounced save - too soon after immediate save')
+      }
+    } else {
+      console.log('📝 State changed but no actual difference detected')
     }
   },
   { equalityFn: (a, b) => {
-    return JSON.stringify(a.ideas) === JSON.stringify(b.ideas) && 
+    return JSON.stringify(a.ideas) === JSON.stringify(b.ideas) &&
            JSON.stringify(a.edges) === JSON.stringify(b.edges)
   }}
 )
@@ -96,8 +109,21 @@ class UndoRedoManager {
   private history: HistoryState[] = []
   private currentIndex = -1
   private maxHistory = 10
+  public lastImmediateSave = 0
 
-  saveState(state: HistoryState) {
+  saveState(state: HistoryState, isImmediate = false) {
+    console.log('💾 Saving state to history:', {
+      ideasCount: Object.keys(state.ideas).length,
+      edgesCount: Object.keys(state.edges).length,
+      currentIndex: this.currentIndex,
+      historyLength: this.history.length,
+      isImmediate
+    })
+
+    if (isImmediate) {
+      this.lastImmediateSave = Date.now()
+    }
+
     // Remove any future history if we're not at the end
     if (this.currentIndex < this.history.length - 1) {
       this.history = this.history.slice(0, this.currentIndex + 1)
@@ -112,6 +138,8 @@ class UndoRedoManager {
       this.history.shift()
       this.currentIndex--
     }
+
+    console.log('✅ State saved, new history length:', this.history.length, 'currentIndex:', this.currentIndex)
   }
 
   undo(): HistoryState | null {
@@ -156,9 +184,19 @@ export const saveCurrentState = () => {
 }
 
 export const undo = async () => {
+  console.log('🔄 Undo called')
   const currentState = useStore.getState()
+  console.log('📊 Current state:', {
+    ideasCount: Object.keys(currentState.ideas).length,
+    edgesCount: Object.keys(currentState.edges).length
+  })
+
   const previousState = undoRedoManager.undo()
-  
+  console.log('📋 Previous state from history:', previousState ? {
+    ideasCount: Object.keys(previousState.ideas).length,
+    edgesCount: Object.keys(previousState.edges).length
+  } : 'null')
+
   if (previousState) {
     // Find items that were deleted (exist in previous but not in current)
     const restoredIdeas: string[] = []
@@ -265,9 +303,19 @@ export const undo = async () => {
 }
 
 export const redo = async () => {
+  console.log('🔄 Redo called')
   const currentState = useStore.getState()
+  console.log('📊 Current state:', {
+    ideasCount: Object.keys(currentState.ideas).length,
+    edgesCount: Object.keys(currentState.edges).length
+  })
+
   const nextState = undoRedoManager.redo()
-  
+  console.log('📋 Next state from history:', nextState ? {
+    ideasCount: Object.keys(nextState.ideas).length,
+    edgesCount: Object.keys(nextState.edges).length
+  } : 'null')
+
   if (nextState) {
     // Find items that were deleted (exist in current but not in next)
     const deletedIdeas: string[] = []
@@ -288,18 +336,25 @@ export const redo = async () => {
     // Find items that were restored (exist in next but not in current)
     const restoredIdeas: string[] = []
     const restoredEdges: string[] = []
-    
+
     for (const id in nextState.ideas) {
       if (!currentState.ideas[id]) {
         restoredIdeas.push(id)
       }
     }
-    
+
     for (const id in nextState.edges) {
       if (!currentState.edges[id]) {
         restoredEdges.push(id)
       }
     }
+
+    console.log('🔄 Redo analysis:', {
+      deletedIdeas: deletedIdeas.length,
+      deletedEdges: deletedEdges.length,
+      restoredIdeas: restoredIdeas.length,
+      restoredEdges: restoredEdges.length
+    })
     
     // First restore the state locally
     useStore.setState(nextState)

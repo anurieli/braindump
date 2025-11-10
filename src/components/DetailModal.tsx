@@ -154,9 +154,12 @@ export default function DetailModal() {
   const ideaThumbnailUrl = typeof ideaMetadata?.['thumbnailUrl'] === 'string' ? ideaMetadata?.['thumbnailUrl'] : undefined;
   const attachmentUrl = attachmentData?.metadata?.previewUrl || attachmentData?.url || ideaPreviewUrl || ideaThumbnailUrl;
 
+  const highlightText = (isEditing ? editedText : idea.text) || idea.text;
+  const formattedCreatedAt = idea.created_at ? new Date(idea.created_at).toLocaleString() : '';
+
   const handleSave = () => {
     if (editedText.trim()) {
-      updateIdeaText(idea.id, editedText.trim());
+      updateIdeaText(idea.id, editedText.trim(), { skipAI: true });
       setIsEditing(false);
     }
   };
@@ -175,318 +178,289 @@ export default function DetailModal() {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && closeModal()}>
-      <DialogContent 
-        className="max-w-3xl max-h-[85vh] overflow-hidden border-0 p-0 liquid-glass"
+      <DialogContent
+        className="idea-modal w-full max-w-2xl max-h-[90vh] overflow-hidden border-0 p-0 text-slate-100 [&>button[data-radix-dialog-close]]:hidden"
       >
-        {/* Accessibility: Hidden title and description for screen readers */}
         <DialogTitle className="sr-only">Idea Details</DialogTitle>
         <DialogDescription className="sr-only">
-          View and edit idea details and relationships
+          View and edit idea details, attachments, and relationships
         </DialogDescription>
-        
-        {/* Header with icon controls */}
-        <div className="flex items-center justify-end gap-2 p-4 pb-3 border-b border-current/10">
-          {idea.type === 'attachment' && attachmentUrl && (
-            <Button
-              onClick={() => window.open(attachmentUrl, '_blank')}
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-            >
-              <Download className="h-4 w-4" />
-            </Button>
-          )}
-          <Button
-            onClick={() => {
-              setEditedText(idea.text);
-              setIsEditing(!isEditing);
-            }}
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-          >
-            <Edit2 className="h-4 w-4" />
-          </Button>
-          <Button
-            onClick={handleDelete}
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 hover:text-red-500"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-          <Button
-            onClick={closeModal}
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
 
-        {/* Main content area */}
-        <div className="overflow-y-auto p-6 pt-4 pb-20" style={{ maxHeight: 'calc(85vh - 120px)' }}>
-          {idea.type === 'attachment' && (
-            <div className="mb-6">
-              <div className="relative w-full max-h-[60vh] rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center">
-                {isAttachmentLoading && (
-                  <div className="absolute inset-0 animate-pulse bg-gray-200" />
-                )}
-                {attachmentError && (
-                  <p className="text-sm text-red-500 px-4 text-center z-10">{attachmentError}</p>
-                )}
-                {!isAttachmentLoading && !attachmentError && attachmentUrl && (
-                  <img
-                    src={attachmentUrl}
-                    alt={attachmentData?.filename || idea.text}
-                    draggable={false}
-                    className="max-h-[60vh] w-full object-contain"
-                  />
-                )}
-                {!isAttachmentLoading && !attachmentError && !attachmentUrl && (
-                  <p className="text-sm opacity-60 px-4 text-center">No preview available</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Idea content - centered and prominent */}
-          <div className="mb-6">
-            {isEditing ? (
-              <div className="space-y-3">
+        <div className="flex max-h-[85vh] flex-col">
+          <header className="flex items-start justify-between gap-4 px-8 pt-8">
+            <div className="flex-1 space-y-2">
+              <p className="text-[11px] uppercase tracking-[0.35em] text-white/50">
+                Idea
+              </p>
+              {isEditing ? (
                 <Textarea
                   value={editedText}
                   onChange={(e) => setEditedText(e.target.value)}
-                  rows={6}
-                  className="w-full text-lg"
+                  onKeyDown={(e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSave();
+                    }
+                  }}
+                  rows={1}
+                  className="idea-textarea text-2xl font-semibold leading-tight w-full"
                   autoFocus
                 />
-                <div className="flex gap-2">
+              ) : (
+                <h2 className="text-2xl font-semibold leading-tight text-white">
+                  {idea.text}
+                </h2>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {isEditing ? (
+                <>
                   <Button onClick={handleSave} size="sm">
                     Save
                   </Button>
-                  <Button 
-                    onClick={() => setIsEditing(false)} 
-                    variant="outline" 
+                  <Button
+                    onClick={() => setIsEditing(false)}
+                    variant="outline"
                     size="sm"
                   >
                     Cancel
                   </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center">
-                <p className="text-lg whitespace-pre-wrap">
-                  {idea.text}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Attachments (URLs, images, PDFs, files) */}
-          <div className="mb-6">
-            <h3 className="text-sm mb-2 opacity-70">Attachments</h3>
-            {isAllAttachmentsLoading && (
-              <p className="text-sm opacity-60">Loading attachments…</p>
-            )}
-            {allAttachmentsError && (
-              <p className="text-sm text-red-500">{allAttachmentsError}</p>
-            )}
-            {!isAllAttachmentsLoading && !allAttachmentsError && allAttachments.length === 0 && (
-              <p className="text-sm opacity-60">No attachments</p>
-            )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {allAttachments.map((att) => {
-                const type = att.type as string;
-                const url = (att.metadata?.previewUrl as string) || (att.metadata?.thumbnailUrl as string) || (att.url as string);
-                const title = (att.metadata?.title as string) || (att.filename as string) || (att.url as string) || 'Attachment';
-                const open = () => { if (url) window.open(url, '_blank'); };
-                return (
-                  <div
-                    key={att.id}
-                    className="flex items-center gap-3 p-2 rounded-lg liquid-glass"
+                </>
+              ) : (
+                <>
+                  {idea.type === 'attachment' && attachmentUrl && (
+                    <Button
+                      onClick={() => window.open(attachmentUrl, '_blank')}
+                      variant="ghost"
+                      size="icon"
+                      className="glass-icon-button"
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button
+                    onClick={() => {
+                      setEditedText(idea.text);
+                      setIsEditing(!isEditing);
+                    }}
+                    variant="ghost"
+                    size="icon"
+                    className="glass-icon-button"
                   >
-                    <div className="h-12 w-12 rounded overflow-hidden border border-current/10 flex-shrink-0 bg-gray-100">
-                      {type === 'image' || type === 'url' ? (
-                        url ? (
-                          <img
-                            src={url}
-                            alt={title}
-                            className="h-full w-full object-cover"
-                            onClick={open}
-                          />
-                        ) : (
-                          <div className="h-full w-full flex items-center justify-center text-xs opacity-60">No preview</div>
-                        )
-                      ) : (
-                        <div className="h-full w-full flex items-center justify-center text-xs opacity-60">
-                          {type.toUpperCase()}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm truncate">{title}</p>
-                      {att.url && (
-                        <a
-                          href={att.url as string}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs underline opacity-70"
-                        >
-                          Open
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    onClick={handleDelete}
+                    variant="ghost"
+                    size="icon"
+                    className="glass-icon-button hover:text-rose-300"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    onClick={closeModal}
+                    variant="ghost"
+                    size="icon"
+                    className="glass-icon-button"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
             </div>
-          </div>
-          
-          {/* Relationship Tree */}
-          {(parents.length > 0 || children.length > 0) && (
-            <div className="mb-4">
-              <h3 className="text-sm mb-4 opacity-70">
-                Relationship Tree
-              </h3>
-              <div className="relative p-6 rounded-xl liquid-glass">
-                {/* SVG for connections */}
-                <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ overflow: 'visible' }}>
-                  {/* Parent connections */}
-                  {parents.map((parent, idx) => {
-                    const startY = 20 + idx * 60;
-                    return (
-                      <g key={parent.edge.id}>
-                        <line
-                          x1={150}
-                          y1={startY + 20}
-                          x2="50%"
-                          y2={parents.length * 60 + 50}
-                          stroke="currentColor"
-                          strokeWidth={2}
-                          opacity={0.3}
-                        />
-                      </g>
-                    );
-                  })}
-                  {/* Child connections */}
-                  {children.map((child, idx) => {
-                    const startY = parents.length * 60 + 140 + idx * 60;
-                    return (
-                      <g key={child.edge.id}>
-                        <line
-                          x1="50%"
-                          y1={parents.length * 60 + 90}
-                          x2={150}
-                          y2={startY + 20}
-                          stroke="currentColor"
-                          strokeWidth={2}
-                          opacity={0.3}
-                        />
-                      </g>
-                    );
-                  })}
-                </svg>
+          </header>
 
-                {/* Parents (one level up) */}
-                {parents.length > 0 && (
-                  <div className="mb-8 space-y-3">
-                    {parents.map(({ edge, idea: parentIdea }) => (
-                      <div 
-                        key={edge.id}
-                        className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all hover:scale-[1.02]"
-                        style={{
-                          background: 'rgba(59, 130, 246, 0.15)',
-                          border: '1px solid rgba(59, 130, 246, 0.3)',
-                        }}
+          <div className="idea-divider mx-8 my-6" />
+
+          <div className="flex-1 space-y-8 overflow-y-auto px-8 pb-24">
+            <section className="idea-modal-section text-center">
+              <p className="mx-auto mt-5 max-w-xl whitespace-pre-wrap text-base text-white/80">
+                {idea.text}
+              </p>
+            </section>
+
+            {idea.type === 'attachment' && (
+              <section className="idea-modal-section">
+                <h3 className="section-title">Attachment Preview</h3>
+                <div className="relative mt-4 flex min-h-[180px] items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+                  {isAttachmentLoading && (
+                    <div className="absolute inset-0 animate-pulse bg-white/10" />
+                  )}
+                  {attachmentError && (
+                    <p className="z-10 px-4 text-sm text-rose-200">
+                      {attachmentError}
+                    </p>
+                  )}
+                  {!isAttachmentLoading && !attachmentError && attachmentUrl && (
+                    <img
+                      src={attachmentUrl}
+                      alt={attachmentData?.filename || idea.text}
+                      draggable={false}
+                      className="max-h-[320px] w-full object-contain"
+                    />
+                  )}
+                  {!isAttachmentLoading &&
+                    !attachmentError &&
+                    !attachmentUrl && (
+                      <p className="px-4 text-sm text-white/60">
+                        No preview available
+                      </p>
+                    )}
+                </div>
+              </section>
+            )}
+
+            <section className="idea-modal-section">
+              <div className="flex items-center justify-between">
+                <h3 className="section-title">Attachments</h3>
+                {allAttachments.length > 0 && !isAllAttachmentsLoading && (
+                  <span className="text-xs font-medium text-white/60">
+                    {allAttachments.length}{' '}
+                    {allAttachments.length === 1 ? 'file' : 'files'}
+                  </span>
+                )}
+              </div>
+              <div className="mt-3 space-y-3 text-left text-sm text-white/70">
+                {isAllAttachmentsLoading && <p>Loading attachments…</p>}
+                {allAttachmentsError && (
+                  <p className="text-rose-200">{allAttachmentsError}</p>
+                )}
+                {!isAllAttachmentsLoading &&
+                  !allAttachmentsError &&
+                  allAttachments.length === 0 && (
+                    <p className="text-white/60">No attachments</p>
+                  )}
+                {!isAllAttachmentsLoading &&
+                  !allAttachmentsError &&
+                  allAttachments.length > 0 && (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {allAttachments.map((att) => {
+                        const type = att.type as string;
+                        const url =
+                          (att.metadata?.previewUrl as string) ||
+                          (att.metadata?.thumbnailUrl as string) ||
+                          (att.url as string);
+                        const title =
+                          (att.metadata?.title as string) ||
+                          (att.filename as string) ||
+                          (att.url as string) ||
+                          'Attachment';
+                        const open = () => {
+                          if (url) window.open(url, '_blank');
+                        };
+
+                        return (
+                          <button
+                            key={att.id}
+                            type="button"
+                            onClick={open}
+                            className="attachment-item group"
+                          >
+                            <div className="attachment-thumb">
+                              {type === 'image' || type === 'url' ? (
+                                url ? (
+                                  <img
+                                    src={url}
+                                    alt={title}
+                                    className="h-full w-full object-cover opacity-80 transition group-hover:opacity-100"
+                                  />
+                                ) : (
+                                  <span>No preview</span>
+                                )
+                              ) : (
+                                <span>{type.toUpperCase()}</span>
+                              )}
+                            </div>
+                            <div className="attachment-meta">
+                              <p className="truncate font-medium text-white">
+                                {title}
+                              </p>
+                              {att.url && (
+                                <span className="text-xs text-cyan-200">
+                                  Open in new tab
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+              </div>
+            </section>
+
+            <section className="idea-modal-section">
+              <h3 className="section-title">Relationship Tree</h3>
+              {parents.length === 0 && children.length === 0 ? (
+                <p className="mt-3 text-sm text-white/60">
+                  No relationships yet.
+                </p>
+              ) : (
+                <div className="mt-4 space-y-5">
+                  {parents.map(({ edge, idea: parentIdea }) => (
+                    <div
+                      key={edge.id}
+                      className="flex flex-wrap items-center justify-center gap-3"
+                    >
+                      <div className="glass-pill glass-pill--edge">
+                        {edge.type}
+                        <span className="pill-subtle">Parent</span>
+                      </div>
+                      <span className="relationship-arrow">→</span>
+                      <button
+                        type="button"
+                        className="glass-pill glass-pill--node"
                         onClick={() => handleNodeClick(parentIdea!.id)}
                       >
-                        <div className="flex-shrink-0">
-                          <div 
-                            className="px-2 py-1 rounded text-xs"
-                            style={{ 
-                              background: 'rgba(59, 130, 246, 0.2)',
-                            }}
-                          >
-                            {edge.type}
-                          </div>
-                        </div>
-                        <p className="text-sm flex-1 truncate">
-                          {parentIdea?.text}
-                        </p>
+                        {parentIdea?.text || 'Untitled'}
+                      </button>
+                    </div>
+                  ))}
+
+                  {(parents.length > 0 || children.length > 0) && (
+                    <div className="flex justify-center">
+                      <div className="glass-pill glass-pill--current text-sm">
+                        Current: {idea.text}
                       </div>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  )}
 
-                {/* Current idea (center) */}
-                <div 
-                  className="my-6 p-4 rounded-lg text-center"
-                  style={{
-                    background: 'rgba(99, 102, 241, 0.25)',
-                    border: '2px solid rgba(99, 102, 241, 0.4)',
-                  }}
-                >
-                  <p className="text-sm truncate">
-                    <strong>Current:</strong> {idea.text}
-                  </p>
-                </div>
-
-                {/* Children (one level down) */}
-                {children.length > 0 && (
-                  <div className="mt-8 space-y-3">
-                    {children.map(({ edge, idea: childIdea }) => (
-                      <div 
-                        key={edge.id}
-                        className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all hover:scale-[1.02]"
-                        style={{
-                          background: 'rgba(34, 197, 94, 0.15)',
-                          border: '1px solid rgba(34, 197, 94, 0.3)',
-                        }}
+                  {children.map(({ edge, idea: childIdea }) => (
+                    <div
+                      key={edge.id}
+                      className="flex flex-wrap items-center justify-center gap-3"
+                    >
+                      <button
+                        type="button"
+                        className="glass-pill glass-pill--node"
                         onClick={() => handleNodeClick(childIdea!.id)}
                       >
-                        <div className="flex-shrink-0">
-                          <div 
-                            className="px-2 py-1 rounded text-xs"
-                            style={{ 
-                              background: 'rgba(34, 197, 94, 0.2)',
-                            }}
-                          >
-                            {edge.type}
-                          </div>
-                        </div>
-                        <p className="text-sm flex-1 truncate">
-                          {childIdea?.text}
-                        </p>
+                        {childIdea?.text || 'Untitled'}
+                      </button>
+                      <span className="relationship-arrow">←</span>
+                      <div className="glass-pill glass-pill--edge">
+                        {edge.type}
+                        <span className="pill-subtle">Child</span>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {/* AI Summary (if available) */}
-          {idea.summary && (
-            <div className="mb-4">
-              <h3 className="text-sm mb-2 opacity-70">
-                AI Summary
-              </h3>
-              <p className="text-sm opacity-60">
-                {idea.summary}
-              </p>
-            </div>
-          )}
-        </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
 
-        {/* Footer with created date */}
-        <div 
-          className="absolute bottom-0 left-0 right-0 p-4 flex justify-end backdrop-blur-md border-t border-current/10"
-        >
-          <span className="text-xs opacity-50">
-            Created {new Date(idea.created_at).toLocaleString()}
-          </span>
+            {idea.summary && (
+              <section className="idea-modal-section">
+                <h3 className="section-title">AI Summary</h3>
+                <p className="mt-3 text-sm text-white/70">{idea.summary}</p>
+              </section>
+            )}
+          </div>
+
+          <footer className="idea-modal-footer">
+            <span className="text-xs text-white/60">
+              Created {formattedCreatedAt}
+            </span>
+          </footer>
         </div>
       </DialogContent>
     </Dialog>

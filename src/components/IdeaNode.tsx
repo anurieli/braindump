@@ -4,7 +4,7 @@ import { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react
 import { useStore } from '@/store';
 import { getThemeTextColor } from '@/lib/themes';
 import type { IdeaDB } from '@/types';
-import { Paperclip, Move } from 'lucide-react';
+import { Paperclip, Move, MoveDiagonal } from 'lucide-react';
 import AttachmentNode from './AttachmentNode';
 import { supabase } from '@/lib/supabase';
 
@@ -63,18 +63,21 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const setDragHoverTargetId = useStore(state => state.setDragHoverTargetId);
   const showShortcutAssistant = useStore(state => state.showShortcutAssistant);
   const hideShortcutAssistant = useStore(state => state.hideShortcutAssistant);
+  const updateIdeaText = useStore(state => state.updateIdeaText);
   
   const [isDragging, setIsDragging] = useState(false);
   const [isMouseDown, setIsMouseDown] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState('');
   const [glowOpacity, setGlowOpacity] = useState(() => computeInitialGlowOpacity(idea.created_at));
   // Check if this idea is the current drag hover target
   const isDraggedOver = dragHoverTargetId === idea.id;
   const dragStartRef = useRef({ x: 0, y: 0, ideaX: idea.position_x, ideaY: idea.position_y });
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
-  const lastClickTimeRef = useRef(0);
   const nodeRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   
   const isSelected = selectedIdeaIds.has(idea.id);
   const isConnectionSource = connectionSourceId === idea.id;
@@ -212,7 +215,51 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     // IMPORTANT: Don't include 'edges' in dependencies to prevent recreation after deletion
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hoveredNodeId, isCreatingConnection, connectionSourceId, idea.id, touchedNodesInConnection, currentBrainDumpId, isCommandKeyPressed]);
-  
+
+  // Display logic: show summary as main text if available, otherwise show original text
+  const hasValidSummary = idea.summary && idea.summary.trim().length > 0;
+  const mainText = hasValidSummary ? idea.summary ?? '' : idea.text ?? '';
+  const displayText = mainText;
+
+  const adjustTextareaSize = useCallback(() => {
+    if (editTextareaRef.current) {
+      const textarea = editTextareaRef.current;
+      textarea.style.height = 'auto';
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isEditing) {
+      adjustTextareaSize();
+    }
+  }, [isEditing, editText, adjustTextareaSize]);
+
+  const handleStartEditing = useCallback(() => {
+    if (idea.type === 'attachment') return;
+    setEditText(idea.text ?? '');
+    setIsEditing(true);
+  }, [idea.type, idea.text]);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (editText.trim() !== (idea.text ?? '')) {
+      await updateIdeaText(idea.id, editText.trim(), { skipAI: true });
+    }
+    setIsEditing(false);
+    setEditText('');
+  }, [editText, idea.text, updateIdeaText, idea.id]);
+
+  const handleCancelEdit = useCallback(() => {
+    setIsEditing(false);
+    setEditText('');
+  }, []);
+
+  const handleExpandClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    selectIdea(idea.id);
+    openModal('idea-details');
+  }, [selectIdea, idea.id, openModal]);
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     // Don't handle if clicking on the connection handle
     if ((e.target as HTMLElement).closest('.connection-handle')) {
@@ -220,16 +267,9 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     }
     
     e.stopPropagation();
-    
-    // Check for double-click
-    const now = Date.now();
-    if (now - lastClickTimeRef.current < 300) {
-      selectIdea(idea.id); // Set this as the selected idea for the modal
-      openModal('idea-details');
-      lastClickTimeRef.current = 0;
+    if (isEditing) {
       return;
     }
-    lastClickTimeRef.current = now;
     
     // Handle connection mode
     if (isCreatingConnection && connectionSourceId) {
@@ -267,7 +307,14 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
       selectIdea(idea.id);
       setSelection([idea.id]);
     }
-  }, [selectIdea, idea.id, isSelected, selectedIdeaIds, setSelection, isCreatingConnection, connectionSourceId, openModal]);
+  }, [selectIdea, idea.id, isSelected, selectedIdeaIds, setSelection, isCreatingConnection, connectionSourceId, isEditing]);
+
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.nativeEvent as MouseEvent).stopImmediatePropagation?.();
+    handleStartEditing();
+  }, [handleStartEditing]);
   
   // Use document-level mouse events for proper dragging
   useEffect(() => {
@@ -447,11 +494,6 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     }
     
   }, [isCreatingConnection, connectionSourceId, idea.id, setHoveredNodeId]);
-  
-  // Display logic: show summary as main text if available, otherwise show original text
-  const hasValidSummary = idea.summary && idea.summary.trim().length > 0;
-  const mainText = hasValidSummary ? idea.summary ?? '' : idea.text ?? '';
-  const displayText = mainText.length > 100 ? mainText.substring(0, 100) + '...' : mainText;
 
   // Check if node is in generating state
   const isGenerating = idea.state === 'generating';
@@ -550,6 +592,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onMouseDown={handleMouseDown}
+      onDoubleClick={handleDoubleClick}
     >
       <div 
         ref={contentRef}
@@ -566,7 +609,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         }}
       >
         {/* Connection handle in center */}
-        {isHovered && (
+        {isHovered && !isEditing && (
           <div
             className="connection-handle absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center z-50 cursor-crosshair hover:scale-110 transition-transform shadow-lg"
             onMouseDown={handleConnectionHandleMouseDown}
@@ -574,6 +617,22 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
           >
             <Move className="h-5 w-5 text-white" />
           </div>
+        )}
+
+        {/* Expand button on right side */}
+        {isHovered && !isEditing && idea.type === 'text' && (
+          <button
+            type="button"
+            className="expand-handle absolute top-1/2 right-1 -translate-y-1/2 z-50 cursor-pointer p-1 rounded-sm transition-opacity opacity-70 hover:opacity-100"
+            style={{
+              color: isDarkMode ? 'rgba(229, 231, 235, 0.65)' : 'rgba(55, 65, 81, 0.55)',
+            }}
+            onClick={handleExpandClick}
+            onMouseEnter={(e) => e.stopPropagation()}
+            aria-label="Expand idea details"
+          >
+            <MoveDiagonal className="h-3.5 w-3.5" />
+          </button>
         )}
         
         {/* Peek preview (slightly expanded) */}
@@ -591,7 +650,39 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
           </div>
         )}
         {/* Content */}
-        <p className="text-sm break-words" style={{ color: textColor }}>{displayText}</p>
+        {isEditing ? (
+          <textarea
+            ref={(el) => {
+              editTextareaRef.current = el;
+              if (el) {
+                el.focus();
+                el.setSelectionRange(el.value.length, el.value.length);
+                adjustTextareaSize();
+              }
+            }}
+            value={editText}
+            onChange={(e) => {
+              setEditText(e.target.value);
+              adjustTextareaSize();
+            }}
+            onBlur={handleSaveEdit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSaveEdit();
+              } else if (e.key === 'Escape') {
+                handleCancelEdit();
+              }
+            }}
+            className="w-full text-sm bg-transparent border-none outline-none resize-none break-words"
+            style={{ color: textColor, overflow: 'hidden' }}
+            rows={1}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <p className="text-sm break-words whitespace-pre-wrap" style={{ color: textColor }}>{displayText}</p>
+        )}
         {/* URL attachments preview */}
         {urlAttachments.length > 0 && (
           <div className="mt-2 pt-2 border-t border-current/10 space-y-1">
