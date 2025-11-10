@@ -467,15 +467,61 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   // Connection handling - add global mouse up
   
   useEffect(() => {
-    const handleGlobalMouseUp = () => {
+    const handleGlobalMouseUp = async (e: MouseEvent) => {
       if (isCreatingConnection) {
+        const connectionSourceId = useStore.getState().connectionSourceId;
+        const hoveredNodeId = useStore.getState().hoveredNodeId;
+        const isCommandKeyPressed = useStore.getState().isCommandKeyPressed;
+        const hideShortcutAssistant = useStore.getState().hideShortcutAssistant;
+        const addIdea = useStore.getState().addIdea;
+        const addEdge = useStore.getState().addEdge;
+        
+        // Check if we should create a new idea (not holding Command AND not hovering over a node)
+        if (!isCommandKeyPressed && !hoveredNodeId && connectionSourceId && canvasRef.current) {
+          console.log('🆕 Creating new idea from connection without Command');
+          
+          try {
+            // Get cursor position in canvas coordinates
+            const rect = canvasRef.current.getBoundingClientRect();
+            const canvasPos = screenToCanvas(
+              e.clientX - rect.left,
+              e.clientY - rect.top,
+              viewport.x,
+              viewport.y,
+              viewport.zoom
+            );
+            
+            // Create new idea at cursor position with empty text
+            const newIdeaId = await addIdea('', {
+              x: canvasPos.x,
+              y: canvasPos.y
+            });
+            
+            if (newIdeaId) {
+              console.log('✅ Created new idea:', newIdeaId);
+              
+              // Create edge from source to new idea
+              await addEdge(connectionSourceId, newIdeaId, 'related_to');
+              console.log('✅ Created edge from', connectionSourceId, 'to', newIdeaId);
+              
+              // Show QuickIdeaInput at cursor position (screen coordinates)
+              showQuickEditor(e.clientX - rect.left, e.clientY - rect.top);
+              console.log('✅ Opened QuickEditor');
+            }
+          } catch (error) {
+            console.error('❌ Failed to create new idea from connection:', error);
+          }
+        }
+        
+        // Always cancel connection and hide assistant
         cancelConnection();
+        hideShortcutAssistant();
       }
     };
     
     window.addEventListener('mouseup', handleGlobalMouseUp);
     return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
-  }, [isCreatingConnection, cancelConnection]);
+  }, [isCreatingConnection, cancelConnection, viewport, showQuickEditor]);
 
   // Handle keyboard shortcuts
   useEffect(() => {

@@ -173,10 +173,18 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     // Only process when hoveredNodeId changes (not when edges change)
     // This prevents unwanted edge recreation after deletion
     if (isCreatingConnection && connectionSourceId && hoveredNodeId === idea.id && connectionSourceId !== idea.id) {
+      // Only create/delete edges if Command key is pressed
+      if (!isCommandKeyPressed) {
+        console.log('⚠️ Connection hover without Command - skipping edge creation');
+        return;
+      }
+      
       // Skip if already touched - we only want to toggle once per drag session
       if (touchedNodesInConnection.has(idea.id)) {
         return;
       }
+      
+      console.log('✅ Connection hover WITH Command - processing edge');
       
       // Check if edge already exists at this moment
       const existingEdge = Object.values(edges).find(
@@ -198,7 +206,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     }
     // IMPORTANT: Don't include 'edges' in dependencies to prevent recreation after deletion
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hoveredNodeId, isCreatingConnection, connectionSourceId, idea.id, touchedNodesInConnection, currentBrainDumpId]);
+  }, [hoveredNodeId, isCreatingConnection, connectionSourceId, idea.id, touchedNodesInConnection, currentBrainDumpId, isCommandKeyPressed]);
   
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     // Don't handle if clicking on the connection handle
@@ -387,7 +395,11 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     
     // Pass the actual screen position to startConnection
     startConnection(idea.id, handleCenterX, handleCenterY);
-  }, [idea.id, startConnection]);
+    
+    // Show ShortcutAssistant with two-part message
+    console.log('📢 Showing connection ShortcutAssistant');
+    showShortcutAssistant('Hold Command to connect to existing ideas • Let go to create new idea at edge');
+  }, [idea.id, startConnection, showShortcutAssistant]);
   
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true);
