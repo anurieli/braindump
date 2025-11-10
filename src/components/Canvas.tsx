@@ -62,8 +62,6 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   // Connection handling state
   const isCreatingConnection = useStore(state => state.isCreatingConnection);
   const cancelConnection = useStore(state => state.cancelConnection);
-  const isAutoRelateMode = useStore(state => state.isAutoRelateMode);
-  const clearAutoRelateMode = useStore(state => state.clearAutoRelateMode);
   
   // Shortcut assistant state
   const shortcutAssistant = useStore(state => state.shortcutAssistant);
@@ -564,14 +562,12 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
         return;
       }
 
-      // Escape - clear selection, cancel connection, or exit auto-relate mode
+      // Escape - clear selection or cancel connection
       if (e.key === 'Escape') {
         if (isCreatingConnection) {
           cancelConnection();
-        } else if (isAutoRelateMode) {
-          console.log('🚪 Escape pressed: clearing auto-relate mode')
-          clearAutoRelateMode();
         } else {
+          // Clear selection (which also clears pending parent in auto-relate mode)
           clearSelection();
         }
       }
@@ -607,7 +603,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIdeaIds, selectedEdgeIds, clearSelection, deleteEdge, isCreatingConnection, cancelConnection, isAutoRelateMode, clearAutoRelateMode, currentBrainDump, inputBoxRef]);
+  }, [selectedIdeaIds, selectedEdgeIds, clearSelection, deleteEdge, isCreatingConnection, cancelConnection, currentBrainDump, inputBoxRef]);
 
   const themeBackground = getThemeBackground(theme);
   const hasActiveBrainDump = Boolean(currentBrainDump);

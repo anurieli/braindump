@@ -159,5 +159,6 @@ node_modules/
 # tasks.json
 # tasks/ 
 
+mcp.json
 .mcp.json
 .cursor/mcp.json

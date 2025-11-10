@@ -131,24 +131,53 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
   const addIdea = useStore(state => state.addIdea)
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
   const ideas = useStore(state => state.ideas)
+  const edges = useStore(state => state.edges)
   const theme = useStore(state => state.theme)
   const viewport = useStore(state => state.viewport)
   const isSidebarOpen = useStore(state => state.isSidebarOpen)
   const lastPlacedIdeaPosition = useStore(state => state.lastPlacedIdeaPosition)
   const updateViewport = useStore(state => state.updateViewport)
   
+  // Selection state
+  const selectedIdeaIds = useStore(state => state.selectedIdeaIds)
+  const setSelection = useStore(state => state.setSelection)
+  
   // Auto-relate state
   const isAutoRelateMode = useStore(state => state.isAutoRelateMode)
-  const autoRelateParentId = useStore(state => state.autoRelateParentId)
   const { addEdge, setAutoRelateMode, clearAutoRelateMode, savePreferencesToDB } = useStoreActions()
+  
+  // Derive pending parent from selection: only when auto-relate is ON and exactly 1 node is selected
+  const selectedIdeaIdsArray = Array.from(selectedIdeaIds)
+  const pendingParentId = isAutoRelateMode && selectedIdeaIdsArray.length === 1
+    ? selectedIdeaIdsArray[0]
+    : null
   
   const sidebarWidth = isSidebarOpen ? 320 : 0 // 320px is the width from SidePanel
 
   // Helper function to get parent idea for placeholder text
   const getParentIdea = () => {
-    if (!autoRelateParentId || !currentBrainDumpId) return null
+    if (!pendingParentId || !currentBrainDumpId) return null
     return Object.values(ideas).find(idea => 
-      idea.id === autoRelateParentId && 
+      idea.id === pendingParentId && 
+      idea.brain_dump_id === currentBrainDumpId
+    )
+  }
+
+  // Helper function to find the parent of the current pending parent
+  const getParentOfCurrentParent = () => {
+    if (!pendingParentId || !currentBrainDumpId) return null
+    
+    // Find an edge where the current pending parent is the child
+    const parentEdge = Object.values(edges).find(edge => 
+      edge.child_id === pendingParentId &&
+      edge.brain_dump_id === currentBrainDumpId
+    )
+    
+    if (!parentEdge) return null
+    
+    // Return the parent idea if it exists in the current brain dump
+    return Object.values(ideas).find(idea => 
+      idea.id === parentEdge.parent_id && 
       idea.brain_dump_id === currentBrainDumpId
     )
   }
@@ -266,14 +295,21 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
       // Call addIdea with text and position (handles database insertion)
       const ideaId = await addIdea((inputValue || '').trim(), { x, y })
       
-      // Create edge connection if in auto-relate mode
-      if (isAutoRelateMode && autoRelateParentId && ideaId) {
-        try {
-          await addEdge(autoRelateParentId, ideaId, 'relates-to')
-          console.log(`🔗 Created auto-relate connection: ${autoRelateParentId} -> ${ideaId}`)
-        } catch (error) {
-          console.error('Failed to create auto-relate edge:', error)
+      // Auto-relate mode logic
+      if (isAutoRelateMode && ideaId) {
+        // Only create edge if there's a pending parent (selected node)
+        if (pendingParentId) {
+          try {
+            await addEdge(pendingParentId, ideaId, 'related_to')
+            console.log(`✅ Created auto-relate connection: ${pendingParentId} -> ${ideaId}`)
+          } catch (error) {
+            console.error('❌ Failed to create auto-relate edge:', error)
+          }
         }
+        
+        // Always select the newly created idea (making it the pending parent for the next node)
+        console.log('🎯 Selecting newly created idea as pending parent:', ideaId)
+        setSelection([ideaId])
       }
 
       // Create URL attachments in background
@@ -321,6 +357,23 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
       e.preventDefault()
       handleSubmit()
     }
+    
+    // Left arrow key: Navigate up the hierarchy when input is empty
+    if (e.key === 'ArrowLeft' && !inputValue.trim() && isAutoRelateMode && pendingParentId) {
+      e.preventDefault()
+      
+      const parentOfCurrent = getParentOfCurrentParent()
+      if (parentOfCurrent) {
+        // Navigate to the parent of the current pending parent
+        console.log('⬅️ Navigating up to parent:', parentOfCurrent.id)
+        setSelection([parentOfCurrent.id])
+      } else {
+        // No parent found, clear selection (no pending parent)
+        console.log('⬅️ At root, clearing selection')
+        setSelection([])
+      }
+    }
+    
     // Shift+Enter allows new line (default textarea behavior)
   }
 
@@ -532,8 +585,10 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={isAutoRelateMode && parentIdea 
-              ? `Add related idea to "${parentIdea.text.slice(0, 30)}${parentIdea.text.length > 30 ? '...' : ''}"` 
+            placeholder={isAutoRelateMode 
+              ? (parentIdea 
+                ? `Add related idea to "${parentIdea.text.slice(0, 30)}${parentIdea.text.length > 30 ? '...' : ''}"` 
+                : "Select a parent idea or just add to start a chain...")
               : "Capture your thoughts..."}
             className="w-full bg-transparent outline-none text-lg placeholder-opacity-60 resize-none"
             style={{ 

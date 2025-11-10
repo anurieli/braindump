@@ -45,8 +45,6 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   
   // Auto-relate mode state
   const isAutoRelateMode = useStore(state => state.isAutoRelateMode);
-  const autoRelateParentId = useStore(state => state.autoRelateParentId);
-  const setAutoRelateMode = useStore(state => state.setAutoRelateMode);
   
   const updateIdeaPosition = useStore(state => state.updateIdeaPosition);
   const openModal = useStore(state => state.openModal);
@@ -67,6 +65,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const hideShortcutAssistant = useStore(state => state.hideShortcutAssistant);
   
   const [isDragging, setIsDragging] = useState(false);
+  const [isMouseDown, setIsMouseDown] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [glowOpacity, setGlowOpacity] = useState(() => computeInitialGlowOpacity(idea.created_at));
   // Check if this idea is the current drag hover target
@@ -79,7 +78,6 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   
   const isSelected = selectedIdeaIds.has(idea.id);
   const isConnectionSource = connectionSourceId === idea.id;
-  const isAutoRelateParent = autoRelateParentId === idea.id;
   const textColor = getThemeTextColor(theme);
   
   // Check if this idea is a parent (has children in relationships)
@@ -250,6 +248,9 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
       ideaY: idea.position_y,
     };
     
+    // Set mouse down state to trigger drag detection
+    setIsMouseDown(true);
+    
     // Handle selection immediately on mouse down
     const isMultiSelect = e.metaKey || e.ctrlKey;
     if (isMultiSelect) {
@@ -270,7 +271,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   
   // Use document-level mouse events for proper dragging
   useEffect(() => {
-    if (!isDragging) return;
+    if (!isMouseDown) return;
 
     const handleDocumentMouseMove = (e: MouseEvent) => {
       if (!dragStartRef.current) return;
@@ -280,7 +281,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
       const distance = Math.sqrt(dx * dx + dy * dy);
       
       // Only start dragging if mouse has moved beyond threshold
-      if (distance > DRAG_THRESHOLD) {
+      if (!isDragging && distance > DRAG_THRESHOLD) {
         // Start dragging
         setIsDragging(true);
         setDraggedIdeaId(idea.id);
@@ -386,6 +387,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     };
 
     const handleDocumentMouseUp = () => {
+      setIsMouseDown(false);
       setIsDragging(false);
       
       // Clear drag state if this was the dragged idea (no drop-based edge creation)
@@ -406,7 +408,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
       document.removeEventListener('mousemove', handleDocumentMouseMove);
       document.removeEventListener('mouseup', handleDocumentMouseUp);
     };
-  }, [isDragging, viewport.zoom, idea.id, updateIdeaPosition, isSelected, selectedIdeaIds, draggedIdeaId, dragHoverTargetId, setDraggedIdeaId, setDragHoverTargetId, edges, currentBrainDumpId, addEdge, deleteEdge, isCommandKeyPressed, hideShortcutAssistant]);
+  }, [isMouseDown, isDragging, viewport.zoom, idea.id, updateIdeaPosition, isSelected, selectedIdeaIds, draggedIdeaId, dragHoverTargetId, setDraggedIdeaId, setDragHoverTargetId, edges, currentBrainDumpId, addEdge, deleteEdge, isCommandKeyPressed, hideShortcutAssistant, ideas, showShortcutAssistant]);
   
   const handleConnectionHandleMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -454,7 +456,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   // Check if node is in generating state
   const isGenerating = idea.state === 'generating';
 
-  const baseBorder = (isAutoRelateParent || isSelected) ? '4px solid #3b82f6' // Blue border for selection and auto-relate parent 
+  const baseBorder = isSelected ? '4px solid #3b82f6' // Blue border for selection
     : isDraggedOver ? '3px solid #10b981'
     : isParent ? '2px solid #d97706' 
     : isGenerating ? '3px solid transparent' // Transparent to show gradient behind
@@ -478,8 +480,8 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const isDarkMode = theme === 'dark';
   const baseBackground = isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.7)';
   
-  const backgroundStyle = (isAutoRelateParent || isSelected)
-      ? 'rgba(59, 130, 246, 0.05)' // Blue background for selection and auto-relate parent
+  const backgroundStyle = isSelected
+      ? 'rgba(59, 130, 246, 0.05)' // Blue background for selection
       : isDraggedOver
         ? 'rgba(16, 185, 129, 0.05)'
         : isParent && !isSelected && !isDraggedOver

@@ -73,7 +73,7 @@ export function useUserPreferences() {
  */
 export async function saveUserPreferencesManually() {
   const state = useStore.getState()
-  const userId = state.loadUserPreferences ? await getCurrentUserId() : null
+  const userId = typeof state.loadUserPreferences === 'function' ? await getCurrentUserId() : null
   
   if (userId) {
     await state.savePreferencesToDB(userId)
