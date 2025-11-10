@@ -11,7 +11,9 @@ import InputBox, { InputBoxHandle } from '@/components/InputBox'
 import SidePanel from '@/components/SidePanel'
 import SettingsModal from '@/components/SettingsModal'
 import ShortcutsPanel from '@/components/ShortcutsPanel'
+import ErrorBoundary from '@/components/ErrorBoundary'
 import { useGlobalKeyboardShortcuts } from '@/hooks/useGlobalKeyboardShortcuts'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 
 export default function Home() {
   const router = useRouter()
@@ -29,6 +31,9 @@ export default function Home() {
 
   // Initialize global keyboard shortcuts
   useGlobalKeyboardShortcuts()
+  
+  // Initialize user preferences loading (load-only, no auto-save)
+  useUserPreferences()
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -109,7 +114,9 @@ export default function Home() {
       {/* Main Content Area */}
       <div className="flex-1 h-full relative overflow-hidden">
         {/* Main Canvas */}
-        <Canvas inputBoxRef={inputBoxRef} />
+        <ErrorBoundary>
+          <Canvas inputBoxRef={inputBoxRef} />
+        </ErrorBoundary>
 
         {/* Canvas Header */}
         <CanvasHeader />

@@ -1,12 +1,6 @@
 export type ThemeType = 
   | 'light'
-  | 'gradient-purple'
-  | 'gradient-ocean'
-  | 'gradient-sunset'
-  | 'gradient-forest'
-  | 'dots-light'
-  | 'dots-dark'
-  | 'waves';
+  | 'dark';
 
 export interface Theme {
   name: ThemeType;
@@ -24,50 +18,11 @@ export const themes: Record<ThemeType, Theme> = {
     backgroundColor: '#ffffff',
     isDark: false,
   },
-  'gradient-purple': {
-    name: 'gradient-purple',
-    displayName: 'Purple Dreams',
-    gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    isDark: true,
-  },
-  'gradient-ocean': {
-    name: 'gradient-ocean',
-    displayName: 'Ocean Depths',
-    gradient: 'linear-gradient(135deg, #2E3192 0%, #1BFFFF 100%)',
-    isDark: true,
-  },
-  'gradient-sunset': {
-    name: 'gradient-sunset',
-    displayName: 'Sunset Glow',
-    gradient: 'linear-gradient(135deg, #FF6B6B 0%, #FFE66D 100%)',
-    isDark: false,
-  },
-  'gradient-forest': {
-    name: 'gradient-forest',
-    displayName: 'Forest Mist',
-    gradient: 'linear-gradient(135deg, #134E5E 0%, #71B280 100%)',
-    isDark: true,
-  },
-  'dots-light': {
-    name: 'dots-light',
-    displayName: 'Dotted Light',
-    backgroundColor: '#f8f9fa',
-    pattern: 'radial-gradient(circle, #d0d0d0 1px, transparent 1px)',
-    isDark: false,
-  },
-  'dots-dark': {
-    name: 'dots-dark',
-    displayName: 'Dotted Dark',
+  'dark': {
+    name: 'dark',
+    displayName: 'Dark',
     backgroundColor: '#1a1a1a',
-    pattern: 'radial-gradient(circle, #404040 1px, transparent 1px)',
     isDark: true,
-  },
-  'waves': {
-    name: 'waves',
-    displayName: 'Wave Pattern',
-    backgroundColor: '#e0f2fe',
-    pattern: 'repeating-linear-gradient(45deg, transparent, transparent 35px, rgba(59, 130, 246, 0.1) 35px, rgba(59, 130, 246, 0.1) 70px)',
-    isDark: false,
   },
 };
 

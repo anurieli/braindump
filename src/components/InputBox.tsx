@@ -6,59 +6,7 @@ import { useStore } from '@/store'
 import type { ThemeType } from '@/types'
 import { Button } from '@/components/ui/button'
 import { findNonOverlappingPosition as findPosition } from '@/lib/idea-positioning'
-
-// Theme utilities (copied from Dumpfigma)
-interface Theme {
-  name: string
-  background: string
-  isDark: boolean
-  gridColor?: string
-}
-
-const themes: Record<ThemeType, Theme> = {
-  light: {
-    name: 'Clean White',
-    background: '#ffffff',
-    isDark: false,
-    gridColor: '#e5e7eb',
-  },
-  'gradient-purple': {
-    name: 'Purple Dreams',
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    isDark: true,
-  },
-  'gradient-ocean': {
-    name: 'Ocean Breeze',
-    background: 'linear-gradient(135deg, #667eea 0%, #4facfe 50%, #00f2fe 100%)',
-    isDark: true,
-  },
-  'gradient-sunset': {
-    name: 'Sunset Vibes',
-    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-    isDark: true,
-  },
-  'gradient-forest': {
-    name: 'Forest Mist',
-    background: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
-    isDark: false,
-  },
-  'dots-light': {
-    name: 'Dotted Light',
-    background: '#f9fafb',
-    isDark: false,
-    gridColor: '#d1d5db',
-  },
-  'dots-dark': {
-    name: 'Dotted Dark',
-    background: 'linear-gradient(135deg, #1e3a8a 0%, #3730a3 100%)',
-    isDark: true,
-  },
-  waves: {
-    name: 'Waves',
-    background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-    isDark: false,
-  },
-}
+import { themes as themeDefinitions } from '@/lib/themes'
 
 const IDEA_WIDTH = 200
 const IDEA_HEIGHT = 100
@@ -68,7 +16,8 @@ function getThemeTextColor(theme: ThemeType): {
   secondary: string
   tertiary: string
 } {
-  const isDark = themes[theme].isDark
+  const themeDef = themeDefinitions[theme]
+  const isDark = themeDef?.isDark ?? false
   
   if (isDark) {
     return {
@@ -86,7 +35,8 @@ function getThemeTextColor(theme: ThemeType): {
 }
 
 function getThemeGlassStyle(theme: ThemeType, isActive: boolean = false) {
-  const isDark = themes[theme].isDark
+  const themeDef = themeDefinitions[theme]
+  const isDark = themeDef?.isDark ?? false
   
   if (isDark) {
     return {

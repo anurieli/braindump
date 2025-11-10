@@ -2,18 +2,30 @@
 
 export type ThemeType = 
   | 'light'
-  | 'gradient-purple'
-  | 'gradient-ocean'
-  | 'gradient-sunset'
-  | 'gradient-forest'
-  | 'dots-light'
-  | 'dots-dark'
-  | 'waves';
+  | 'dark';
+
+export interface UserPreferences {
+  theme: ThemeType;
+  gridSettings: {
+    isVisible: boolean;
+    patternType: 'grid' | 'dots' | 'none';
+  };
+  ui: {
+    isSidebarOpen: boolean;
+    isControlPanelOpen: boolean;
+    enableAnimations: boolean;
+    renderQuality: 'low' | 'medium' | 'high';
+  };
+}
 
 export interface User {
   id: string;
   email: string | null;
   name?: string;
+  metadata?: {
+    preferences?: UserPreferences;
+    [key: string]: unknown;
+  };
 }
 
 export interface BrainDump {
@@ -156,4 +168,4 @@ export interface EdgeDB {
   updated_at: string;
 }
 
-export type Modal = 'settings' | 'shortcuts' | 'idea-details' | 'edge-creation' | null;
+export type Modal = 'settings' | 'shortcuts' | 'idea-details' | 'edge-creation' | 'help' | null;

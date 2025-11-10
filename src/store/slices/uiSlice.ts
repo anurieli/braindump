@@ -1,10 +1,11 @@
 import { StateCreator } from 'zustand'
-import { ThemeType, Modal } from '@/types'
+import { ThemeType, Modal, UserPreferences } from '@/types'
 
 export interface UiSlice {
   // State
   theme: ThemeType
   isGridVisible: boolean
+  patternType: 'grid' | 'dots' | 'none'
   activeModal: Modal
   isSidebarOpen: boolean
   isControlPanelOpen: boolean
@@ -50,6 +51,7 @@ export interface UiSlice {
   setTheme: (theme: ThemeType) => void
   toggleGrid: () => void
   setGridVisible: (visible: boolean) => void
+  setPatternType: (pattern: 'grid' | 'dots' | 'none') => void
   openModal: (modal: Modal) => void
   closeModal: () => void
   toggleSidebar: () => void
@@ -95,6 +97,11 @@ export interface UiSlice {
   // Performance
   setRenderQuality: (quality: 'low' | 'medium' | 'high') => void
   toggleAnimations: () => void
+  
+  // User preferences
+  loadUserPreferences: (userId: string) => Promise<void>
+  savePreferencesToDB: (userId: string) => Promise<void>
+  initializeFromPreferences: (preferences: UserPreferences) => void
 }
 
 export const createUiSlice: StateCreator<
@@ -102,10 +109,11 @@ export const createUiSlice: StateCreator<
   [],
   [],
   UiSlice
-> = (set) => ({
+> = (set, get) => ({
   // Initial state - default to light theme
   theme: 'light',
-  isGridVisible: true,
+  isGridVisible: false,
+  patternType: 'none',
   activeModal: null,
   isSidebarOpen: true,
   isControlPanelOpen: false,
@@ -140,22 +148,47 @@ export const createUiSlice: StateCreator<
   // Actions
   toggleTheme: () => {
     set(state => ({
-      theme: state.theme === 'light' ? 'dots-dark' : 'light'
+      theme: state.theme === 'light' ? 'dark' : 'light'
     }))
+    // Manual save will be triggered by UI components
   },
 
   setTheme: (theme: ThemeType) => {
     set({ theme })
+    // Manual save will be triggered by UI components
   },
 
   toggleGrid: () => {
-    set(state => ({
-      isGridVisible: !state.isGridVisible
-    }))
+    set(state => {
+      // Cycle through: none -> dots -> grid -> none
+      let newPatternType: 'grid' | 'dots' | 'none'
+      if (state.patternType === 'none') {
+        newPatternType = 'dots'
+      } else if (state.patternType === 'dots') {
+        newPatternType = 'grid'
+      } else {
+        newPatternType = 'none'
+      }
+
+      const newGridVisible = newPatternType !== 'none'
+
+      return {
+        patternType: newPatternType,
+        isGridVisible: newGridVisible
+      }
+    })
+    // Manual save will be triggered by UI components
   },
 
   setGridVisible: (visible: boolean) => {
     set({ isGridVisible: visible })
+  },
+
+  setPatternType: (pattern: 'grid' | 'dots' | 'none') => {
+    set({ 
+      patternType: pattern,
+      isGridVisible: pattern !== 'none'
+    })
   },
 
   openModal: (modal: Modal) => {
@@ -351,5 +384,64 @@ export const createUiSlice: StateCreator<
     set(state => ({
       enableAnimations: !state.enableAnimations
     }))
+  },
+
+  // User preferences management
+  loadUserPreferences: async (userId: string) => {
+    try {
+      // Dynamic import to prevent blocking
+      const { getUserPreferences } = await import('@/lib/userPreferences')
+      const preferences = await getUserPreferences(userId)
+      set({
+        theme: preferences.theme,
+        isGridVisible: preferences.gridSettings.isVisible,
+        patternType: preferences.gridSettings.patternType,
+        isSidebarOpen: preferences.ui.isSidebarOpen,
+        isControlPanelOpen: preferences.ui.isControlPanelOpen,
+        enableAnimations: preferences.ui.enableAnimations,
+        renderQuality: preferences.ui.renderQuality,
+      })
+    } catch (error) {
+      console.error('Failed to load user preferences:', error)
+      // Keep current defaults if loading fails
+    }
+  },
+
+  savePreferencesToDB: async (userId: string) => {
+    const state = get()
+    
+    const preferences: UserPreferences = {
+      theme: state.theme,
+      gridSettings: {
+        isVisible: state.isGridVisible,
+        patternType: state.patternType,
+      },
+      ui: {
+        isSidebarOpen: state.isSidebarOpen,
+        isControlPanelOpen: state.isControlPanelOpen,
+        enableAnimations: state.enableAnimations,
+        renderQuality: state.renderQuality,
+      },
+    }
+
+    try {
+      // Dynamic import to prevent blocking
+      const { updateUserPreferences } = await import('@/lib/userPreferences')
+      await updateUserPreferences(userId, preferences)
+    } catch (error) {
+      console.error('Failed to save user preferences:', error)
+    }
+  },
+
+  initializeFromPreferences: (preferences: UserPreferences) => {
+    set({
+      theme: preferences.theme,
+      isGridVisible: preferences.gridSettings.isVisible,
+      patternType: preferences.gridSettings.patternType,
+      isSidebarOpen: preferences.ui.isSidebarOpen,
+      isControlPanelOpen: preferences.ui.isControlPanelOpen,
+      enableAnimations: preferences.ui.enableAnimations,
+      renderQuality: preferences.ui.renderQuality,
+    })
   }
 })

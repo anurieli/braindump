@@ -28,17 +28,6 @@ const MODEL_CONFIGS: Record<AITask, AIModelConfig> = {
       dimensions: 1536,
     },
   },
-  'image-generation': {
-    key: 'image-generation',
-    id: 'dall-e-3',
-    provider: 'openai',
-    type: 'image',
-    pricing: {
-      input: 0,
-      output: 0.04, // $0.04 per standard 1024x1024 image
-    },
-    defaultParams: {},
-  },
 }
 
 export const getModelConfig = (task: AITask): AIModelConfig => {

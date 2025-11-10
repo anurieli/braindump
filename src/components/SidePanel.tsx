@@ -16,11 +16,13 @@ import {
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Tooltip } from '@/components/ui/tooltip';
+import { themes } from '@/lib/themes';
 
 export default function SidePanel() {
   const router = useRouter();
   const brainDumps = useStore(state => state.brainDumps);
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId);
+  const theme = useStore(state => state.theme);
   
   const switchBrainDump = useStore(state => state.switchBrainDump);
   const createBrainDump = useStore(state => state.createBrainDump);
@@ -30,6 +32,8 @@ export default function SidePanel() {
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  
+  const isDark = themes[theme]?.isDark ?? false;
   
   const handleLogout = async () => {
     await signOut();
@@ -101,9 +105,9 @@ export default function SidePanel() {
 
   return (
     <div 
-      className={`h-full bg-gray-50 flex flex-col transition-all duration-300 cursor-pointer ${
+      className={`h-full flex flex-col transition-all duration-300 cursor-pointer ${
         isSidebarOpen ? 'w-80' : 'w-16'
-      }`}
+      } ${isDark ? 'bg-gray-900' : 'bg-gray-50'}`}
       onClick={handleSidebarClick}
     >
       {/* Header */}
@@ -120,7 +124,7 @@ export default function SidePanel() {
             <Brain className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900 whitespace-nowrap">Hi, anurieli365</h1>
+            <h1 className={`text-xl font-semibold whitespace-nowrap ${isDark ? 'text-white' : 'text-gray-900'}`}>Hi, anurieli365</h1>
           </div>
         </div>
         {!isSidebarOpen && (
@@ -135,13 +139,13 @@ export default function SidePanel() {
             e.stopPropagation();
             toggleSidebar();
           }}
-          className="p-2 hover:bg-gray-200 rounded-lg transition-colors flex-shrink-0"
+          className={`p-2 rounded-lg transition-colors flex-shrink-0 ${isDark ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-200 text-gray-400'}`}
           title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
         >
           {isSidebarOpen ? (
-            <ChevronLeft className="w-5 h-5 text-gray-400" />
+            <ChevronLeft className="w-5 h-5" />
           ) : (
-            <ChevronRight className="w-5 h-5 text-gray-400" />
+            <ChevronRight className="w-5 h-5" />
           )}
         </button>
       </div>
@@ -159,10 +163,12 @@ export default function SidePanel() {
               e.stopPropagation();
               handleCreateBrainDump();
             }}
-            className="w-full bg-gray-200 hover:bg-gray-300 rounded-2xl mb-6 flex items-center justify-center gap-3 transition-all duration-300 p-4"
+            className={`w-full rounded-2xl mb-6 flex items-center justify-center gap-3 transition-all duration-300 p-4 ${
+              isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+            }`}
           >
-            <Plus className="w-5 h-5 text-gray-700 flex-shrink-0" />
-            <span className="text-gray-700 font-medium whitespace-nowrap">New Brain Dump</span>
+            <Plus className="w-5 h-5 flex-shrink-0" />
+            <span className="font-medium whitespace-nowrap">New Brain Dump</span>
           </button>
         ) : (
           <Tooltip content="New Brain Dump" side="right">
@@ -171,9 +177,11 @@ export default function SidePanel() {
                 e.stopPropagation();
                 handleCreateBrainDump();
               }}
-              className="w-full bg-gray-200 hover:bg-gray-300 rounded-2xl mb-6 flex items-center justify-center gap-3 transition-all duration-300 p-3"
+              className={`w-full rounded-2xl mb-6 flex items-center justify-center gap-3 transition-all duration-300 p-3 ${
+                isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+              }`}
             >
-              <Plus className="w-5 h-5 text-gray-700 flex-shrink-0" />
+              <Plus className="w-5 h-5 flex-shrink-0" />
             </button>
           </Tooltip>
         )}
@@ -196,8 +204,11 @@ export default function SidePanel() {
             const brainDumpContent = (
               <div
                 className={`
-                  group bg-white rounded-2xl cursor-pointer transition-all hover:shadow-sm border-2 relative
-                  ${isActive ? 'border-purple-500 bg-purple-50 shadow-md' : 'border-gray-200'}
+                  group rounded-2xl cursor-pointer transition-all hover:shadow-sm border-2 relative
+                  ${isActive 
+                    ? `border-purple-500 shadow-md ${isDark ? 'bg-purple-900/30' : 'bg-purple-50'}` 
+                    : isDark ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'
+                  }
                   ${isSidebarOpen ? 'p-6' : 'p-3'}
                 `}
                 onClick={(e) => {
@@ -235,7 +246,11 @@ export default function SidePanel() {
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-3 flex-1">
                           <span className="text-2xl">👋</span>
-                          <h3 className={`text-lg font-semibold ${isActive ? 'text-purple-900' : 'text-gray-900'}`}>
+                          <h3 className={`text-lg font-semibold ${
+                            isActive 
+                              ? isDark ? 'text-purple-300' : 'text-purple-900'
+                              : isDark ? 'text-gray-100' : 'text-gray-900'
+                          }`}>
                             {brainDump.name}
                           </h3>
                         </div>
@@ -246,9 +261,9 @@ export default function SidePanel() {
                               e.stopPropagation();
                               handleStartEdit(brainDump.id, brainDump.name);
                             }}
-                            className="p-1 hover:bg-gray-100 rounded transition-colors"
+                            className={`p-1 rounded transition-colors ${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
                           >
-                            <Edit2 className="w-4 h-4 text-gray-500" />
+                            <Edit2 className={`w-4 h-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
                           </button>
                           
                           <button
@@ -256,18 +271,22 @@ export default function SidePanel() {
                               e.stopPropagation();
                               handleDelete(brainDump.id);
                             }}
-                            className="p-1 hover:bg-red-50 rounded transition-colors"
+                            className={`p-1 rounded transition-colors ${isDark ? 'hover:bg-red-900/30' : 'hover:bg-red-50'}`}
                           >
                             <Trash2 className="w-4 h-4 text-red-500" />
                           </button>
                         </div>
                       </div>
                       
-                      <div className={`text-sm mb-3 ${isActive ? 'text-purple-700' : 'text-gray-600'}`}>
+                      <div className={`text-sm mb-3 ${
+                        isActive 
+                          ? isDark ? 'text-purple-400' : 'text-purple-700'
+                          : isDark ? 'text-gray-400' : 'text-gray-600'
+                      }`}>
                         {ideaCount} ideas • {connectionCount} connections
                       </div>
                       
-                      <div className="text-gray-400 text-xs">
+                      <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                         Updated {formatDate(lastUpdated)}
                       </div>
                     </>
@@ -297,15 +316,15 @@ export default function SidePanel() {
       
       {/* User Section */}
       <div 
-        className={`border-t border-gray-200 transition-all duration-300 ${
-          isSidebarOpen ? 'p-6' : 'p-3'
-        }`}
+        className={`border-t transition-all duration-300 ${
+          isDark ? 'border-gray-700' : 'border-gray-200'
+        } ${isSidebarOpen ? 'p-6' : 'p-3'}`}
       >
         {isSidebarOpen ? (
           <>
             <div className="mb-4">
-              <div className="text-gray-900 font-medium">anurieli365</div>
-              <div className="text-gray-500 text-sm">anurieli365@gmail.com</div>
+              <div className={`font-medium ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>anurieli365</div>
+              <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>anurieli365@gmail.com</div>
             </div>
             
             <button
@@ -313,7 +332,9 @@ export default function SidePanel() {
                 e.stopPropagation();
                 handleLogout();
               }}
-              className="flex items-center gap-3 text-gray-600 hover:text-gray-800 transition-colors"
+              className={`flex items-center gap-3 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
+              }`}
             >
               <LogOut className="w-4 h-4" />
               <span>Log Out</span>
@@ -326,7 +347,9 @@ export default function SidePanel() {
                 e.stopPropagation();
                 handleLogout();
               }}
-              className="w-full flex items-center justify-center text-gray-600 hover:text-gray-800 transition-colors"
+              className={`w-full flex items-center justify-center transition-colors ${
+                isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
+              }`}
             >
               <LogOut className="w-5 h-5" />
             </button>

@@ -1,8 +1,8 @@
 'use client'
 
-import { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, useLayoutEffect, memo } from 'react';
 import { useStore } from '@/store';
-import { getThemeTextColor } from '@/lib/themes';
+import { getThemeTextColor, themes } from '@/lib/themes';
 import type { IdeaDB } from '@/types';
 import { Paperclip, Move } from 'lucide-react';
 import AttachmentNode from './AttachmentNode';
@@ -28,7 +28,7 @@ const computeInitialGlowOpacity = (createdAt?: string | null) => {
   return Math.max(0, 1 - age / GLOW_DURATION_MS);
 };
 
-export default function IdeaNode({ idea }: IdeaNodeProps) {
+function IdeaNode({ idea }: IdeaNodeProps) {
   const theme = useStore(state => state.theme);
   const selectedIdeaIds = useStore(state => state.selectedIdeaIds);
   const viewport = useStore(state => state.viewport);
@@ -72,6 +72,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const isSelected = selectedIdeaIds.has(idea.id);
   const isConnectionSource = connectionSourceId === idea.id;
   const textColor = getThemeTextColor(theme);
+  const isDark = themes[theme]?.isDark ?? false;
   
   // Check if this idea is a parent (has children in relationships)
   const isParent = Object.values(edges).some(
@@ -264,13 +265,22 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     
     // Handle selection
     const isMultiSelect = e.metaKey || e.ctrlKey;
+    const isShiftSelect = e.shiftKey;
+    
     if (isMultiSelect) {
+      // Cmd/Ctrl+click: toggle individual selection
       if (isSelected) {
         removeFromSelection([idea.id]);
       } else {
         addToSelection([idea.id]);
       }
+    } else if (isShiftSelect) {
+      // Shift+click: add to selection (don't toggle)
+      if (!isSelected) {
+        addToSelection([idea.id]);
+      }
     } else {
+      // Regular click: set single selection
       if (!isSelected) {
         setSelection([idea.id]);
       }
@@ -410,7 +420,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     : isDraggedOver ? '3px solid #10b981'
     : isParent ? '2px solid #d97706' 
     : isGenerating ? '3px solid transparent' // Transparent to show gradient behind
-    : '2px solid rgba(156, 163, 175, 0.5)';
+    : isDark ? '2px solid rgba(255, 255, 255, 0.2)' : '2px solid rgba(156, 163, 175, 0.5)';
   
   const glowShadow = glowOpacity > 0
     ? `0 0 0 4px rgba(59, 130, 246, ${0.18 * glowOpacity}), 0 0 20px rgba(59, 130, 246, ${0.45 * glowOpacity})`
@@ -507,7 +517,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         style={{
           border: baseBorder,
           boxShadow: combinedShadow,
-          background: backgroundStyle,
+          background: backgroundStyle || (isDark ? 'rgba(31, 41, 55, 0.8)' : 'rgba(255, 255, 255, 0.9)'),
           transition: 'box-shadow 120ms linear, background-color 120ms linear, border-color 120ms linear',
         }}
       >
@@ -537,7 +547,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
           </div>
         )}
         {/* Content */}
-        <p className="text-sm break-words">{displayText}</p>
+        <p className="text-sm break-words" style={{ color: textColor }}>{displayText}</p>
         {/* URL attachments preview */}
         {urlAttachments.length > 0 && (
           <div className="mt-2 pt-2 border-t border-current/10 space-y-1">
@@ -602,3 +612,17 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     </div>
   );
 }
+
+export default memo(IdeaNode, (prevProps, nextProps) => {
+  // Only re-render if the idea object has actually changed
+  return (
+    prevProps.idea.id === nextProps.idea.id &&
+    prevProps.idea.text === nextProps.idea.text &&
+    prevProps.idea.position_x === nextProps.idea.position_x &&
+    prevProps.idea.position_y === nextProps.idea.position_y &&
+    prevProps.idea.width === nextProps.idea.width &&
+    prevProps.idea.height === nextProps.idea.height &&
+    prevProps.idea.created_at === nextProps.idea.created_at &&
+    prevProps.idea.updated_at === nextProps.idea.updated_at
+  );
+});

@@ -1,16 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   ZoomIn,
   ZoomOut,
   Maximize2,
   Grid3x3,
-  Palette,
+  Moon,
+  Sun,
   Trash2,
   Undo2,
   Redo2,
-  Settings,
   SlidersHorizontal,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { themes, type ThemeType } from '@/lib/themes';
 import {
   useStore,
   undo,
@@ -37,6 +36,7 @@ import {
   startBatch,
   endBatch,
 } from '@/store';
+import { saveUserPreferencesManually } from '@/hooks/useUserPreferences';
 
 interface ToolbarProps {
   className?: string;
@@ -50,12 +50,35 @@ export default function Toolbar({ className }: ToolbarProps) {
   const viewport = useStore(state => state.viewport);
   const updateViewport = useStore(state => state.updateViewport);
   const isGridVisible = useStore(state => state.isGridVisible);
+  const patternType = useStore(state => state.patternType);
   const toggleGrid = useStore(state => state.toggleGrid);
   const theme = useStore(state => state.theme);
-  const setTheme = useStore(state => state.setTheme);
-  const openModal = useStore(state => state.openModal);
-  const selectedIdeaIds = useStore(state => Array.from(state.selectedIdeaIds));
-  const selectedEdgeIds = useStore(state => Array.from(state.selectedEdgeIds));
+  // Get Sets from store - these will trigger re-renders when Set reference changes
+  const selectedIdeaIdsSet = useStore(state => state.selectedIdeaIds);
+  const selectedEdgeIdsSet = useStore(state => state.selectedEdgeIds);
+  
+  // Convert Sets to arrays, memoized based on actual contents to prevent infinite loops
+  // Use state to store arrays and only update when Set contents actually change
+  const [selectedIdeaIds, setSelectedIdeaIds] = useState<string[]>([]);
+  const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([]);
+  
+  useEffect(() => {
+    const ideaIds = Array.from(selectedIdeaIdsSet).sort();
+    const ideaIdsKey = ideaIds.join(',');
+    setSelectedIdeaIds(prev => {
+      const prevKey = [...prev].sort().join(',');
+      return ideaIdsKey !== prevKey ? ideaIds : prev;
+    });
+  }, [selectedIdeaIdsSet]);
+  
+  useEffect(() => {
+    const edgeIds = Array.from(selectedEdgeIdsSet).sort();
+    const edgeIdsKey = edgeIds.join(',');
+    setSelectedEdgeIds(prev => {
+      const prevKey = [...prev].sort().join(',');
+      return edgeIdsKey !== prevKey ? edgeIds : prev;
+    });
+  }, [selectedEdgeIdsSet]);
   const deleteIdea = useStore(state => state.deleteIdea);
   const deleteEdge = useStore(state => state.deleteEdge);
   const clearSelection = useStore(state => state.clearSelection);
@@ -90,8 +113,15 @@ export default function Toolbar({ className }: ToolbarProps) {
     updateViewport({ x: 0, y: 0, zoom: 1 });
   };
 
-  const handleThemeSelect = (themeName: ThemeType) => {
-    setTheme(themeName);
+  const handleToggleTheme = async () => {
+    const toggleTheme = useStore.getState().toggleTheme;
+    toggleTheme();
+    // Save theme preference to database
+    try {
+      await saveUserPreferencesManually();
+    } catch (error) {
+      console.error('Failed to save theme preference:', error);
+    }
   };
 
   const handleUndo = async () => {
@@ -122,35 +152,7 @@ export default function Toolbar({ className }: ToolbarProps) {
     }
   };
 
-  const handleOpenSettings = () => {
-    openModal('settings');
-  };
-
-  const renderThemeMenuItems = (onSelect?: () => void) =>
-    Object.values(themes).map(themeOption => (
-      <DropdownMenuItem
-        key={themeOption.name}
-        onSelect={() => {
-          handleThemeSelect(themeOption.name);
-          onSelect?.();
-        }}
-        className={cn(
-          'flex items-center gap-2',
-          theme === themeOption.name && 'bg-primary/10'
-        )}
-      >
-        <span
-          className="h-4 w-4 rounded-full border border-current/20"
-          style={{
-            background: themeOption.gradient || themeOption.backgroundColor,
-          }}
-        />
-        <span className="flex-1 text-sm">{themeOption.displayName}</span>
-        {theme === themeOption.name && (
-          <span className="text-xs font-medium">✓</span>
-        )}
-      </DropdownMenuItem>
-    ));
+  const isDarkTheme = theme === 'dark';
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
@@ -215,35 +217,45 @@ export default function Toolbar({ className }: ToolbarProps) {
         </div>
 
         {/* Grid Toggle */}
-          <Button
+        <Button
           size="icon"
           variant="ghost"
-          onClick={toggleGrid}
-          title={isGridVisible ? 'Hide Grid' : 'Show Grid'}
+          onClick={async () => {
+            toggleGrid();
+            // Save grid preference to database
+            try {
+              await saveUserPreferencesManually();
+            } catch (error) {
+              console.error('Failed to save grid preference:', error);
+            }
+          }}
+          title={
+            patternType === 'none' ? 'Show Grid Dots' :
+            patternType === 'dots' ? 'Show Grid Lines' :
+            'Hide Grid'
+          }
           className={cn(
             'h-8 w-8',
-            isGridVisible && 'bg-primary/10 text-primary-foreground'
+            patternType !== 'none' && 'bg-primary/10 text-primary-foreground'
           )}
         >
           <Grid3x3 className="h-4 w-4" />
         </Button>
 
-        {/* Theme Selector */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              size="icon"
-              variant="ghost"
-              title="Change Theme"
-              className="h-8 w-8"
-            >
-              <Palette className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            {renderThemeMenuItems()}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Dark/Light Theme Toggle */}
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={handleToggleTheme}
+          title={isDarkTheme ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+          className="h-8 w-8"
+        >
+          {isDarkTheme ? (
+            <Sun className="h-4 w-4" />
+          ) : (
+            <Moon className="h-4 w-4" />
+          )}
+        </Button>
 
         {/* Delete Selected */}
         {hasSelection && (
@@ -257,17 +269,6 @@ export default function Toolbar({ className }: ToolbarProps) {
             <Trash2 className="h-4 w-4" />
           </Button>
         )}
-
-        {/* Settings */}
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={handleOpenSettings}
-          title="Settings"
-          className="h-8 w-8"
-        >
-          <Settings className="h-4 w-4" />
-        </Button>
       </div>
 
       {/* Mobile Controls */}
@@ -342,25 +343,39 @@ export default function Toolbar({ className }: ToolbarProps) {
           <DropdownMenuSeparator />
 
           <DropdownMenuItem
-            onSelect={event => {
+            onSelect={async event => {
               event.preventDefault();
               toggleGrid();
+              // Save grid preference to database
+              try {
+                await saveUserPreferencesManually();
+              } catch (error) {
+                console.error('Failed to save grid preference:', error);
+              }
             }}
           >
             <Grid3x3 className="mr-2 h-4 w-4" />
-            {isGridVisible ? 'Hide Grid' : 'Show Grid'}
+            {
+              patternType === 'none' ? 'Show Grid Dots' :
+              patternType === 'dots' ? 'Show Grid Lines' :
+              'Hide Grid'
+            }
           </DropdownMenuItem>
           <DropdownMenuSeparator />
 
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="flex items-center gap-2">
-              <Palette className="mr-2 h-4 w-4" />
-              Theme
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-48">
-              {renderThemeMenuItems()}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+          <DropdownMenuItem
+            onSelect={event => {
+              event.preventDefault();
+              handleToggleTheme();
+            }}
+          >
+            {isDarkTheme ? (
+              <Sun className="mr-2 h-4 w-4" />
+            ) : (
+              <Moon className="mr-2 h-4 w-4" />
+            )}
+            {isDarkTheme ? 'Switch to Light' : 'Switch to Dark'}
+          </DropdownMenuItem>
 
           {hasSelection && (
             <>
@@ -375,17 +390,6 @@ export default function Toolbar({ className }: ToolbarProps) {
               </DropdownMenuItem>
             </>
           )}
-
-          <DropdownMenuSeparator />
-
-          <DropdownMenuItem
-            onSelect={() => {
-              handleOpenSettings();
-            }}
-          >
-            <Settings className="mr-2 h-4 w-4" />
-            Settings
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

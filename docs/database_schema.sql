@@ -1,7 +1,7 @@
 -- Brain Dump Canvas - Database Schema
 -- PostgreSQL with pgvector extension
 -- Version: 1.1
--- Last Updated: November 7, 2025
+-- Last Updated: November 10, 2025
 
 -- ============================================
 -- EXTENSIONS
@@ -139,6 +139,34 @@ CREATE TABLE attachments (
   CONSTRAINT attachments_url_not_empty CHECK (LENGTH(TRIM(url)) > 0)
 );
 
+-- Users (Authentication and Preferences)
+-- Stores user account information and application preferences
+CREATE TABLE users (
+  id UUID PRIMARY KEY, -- Matches auth.users.id from Supabase Auth
+  email TEXT,
+  full_name TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  
+  -- User preferences and settings stored as flexible JSON
+  -- Structure: {
+  --   preferences: {
+  --     theme: 'light' | 'dark',
+  --     gridSettings: {
+  --       isVisible: boolean,
+  --       patternType: 'grid' | 'dots' | 'none'
+  --     },
+  --     ui: {
+  --       isSidebarOpen: boolean,
+  --       isControlPanelOpen: boolean,
+  --       enableAnimations: boolean,
+  --       renderQuality: 'low' | 'medium' | 'high'
+  --     }
+  --   },
+  --   raw_user_meta: { ... } -- Auth provider metadata
+  -- }
+  metadata JSONB DEFAULT '{}'
+);
+
 -- AI Operations Log (for monitoring and cost tracking)
 -- Tracks all AI operations (summarization, embeddings)
 CREATE TABLE ai_operations (
@@ -163,12 +191,19 @@ CREATE TABLE ai_operations (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   
   -- Constraints
-  CONSTRAINT ai_operations_type_valid CHECK (type IN ('summarization', 'embedding'))
+  CONSTRAINT ai_operations_type_valid CHECK (type IN ('summarization', 'embedding')),
+  
+  -- Reference to user who triggered the operation (optional)
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- ============================================
 -- INDEXES
 -- ============================================
+
+-- Users
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_created ON users(created_at DESC);
 
 -- Brain Dumps
 CREATE INDEX idx_brain_dumps_archived ON brain_dumps(archived_at) WHERE archived_at IS NOT NULL;
@@ -207,6 +242,7 @@ CREATE INDEX idx_ai_operations_idea ON ai_operations(idea_id) WHERE idea_id IS N
 CREATE INDEX idx_ai_operations_type ON ai_operations(type);
 CREATE INDEX idx_ai_operations_created ON ai_operations(created_at DESC);
 CREATE INDEX idx_ai_operations_success ON ai_operations(success);
+CREATE INDEX idx_ai_operations_user ON ai_operations(user_id) WHERE user_id IS NOT NULL;
 
 -- ============================================
 -- FUNCTIONS
@@ -375,6 +411,7 @@ LEFT JOIN (
 -- COMMENTS (Documentation)
 -- ============================================
 
+COMMENT ON TABLE users IS 'User accounts with authentication info and application preferences';
 COMMENT ON TABLE brain_dumps IS 'Isolated workspaces containing ideas and edges';
 COMMENT ON TABLE ideas IS 'Individual thought nodes positioned on the canvas';
 COMMENT ON TABLE edges IS 'Parent-child relationships between ideas';
@@ -388,6 +425,8 @@ COMMENT ON COLUMN ideas.type IS 'Idea type: text (regular text ideas) or attachm
 COMMENT ON COLUMN attachments.metadata IS 'File metadata: {fileSize, mimeType, width, height, thumbnailUrl, isBase64}';
 COMMENT ON COLUMN ideas.state IS 'Processing state: generating (AI processing), ready (complete), error (failed)';
 COMMENT ON COLUMN ideas.session_id IS 'Groups ideas created in the same session for temporal analysis';
+
+COMMENT ON COLUMN users.metadata IS 'User preferences and auth metadata: {preferences: {theme, gridSettings, ui}, raw_user_meta}';
 
 COMMENT ON FUNCTION get_descendants IS 'Recursively find all child ideas (max depth 10)';
 COMMENT ON FUNCTION get_ancestors IS 'Recursively find all parent ideas (max depth 10)';

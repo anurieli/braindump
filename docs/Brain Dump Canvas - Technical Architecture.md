@@ -1,7 +1,7 @@
 # Brain Dump Canvas - Technical Architecture
 
-**Version**: 1.1  
-**Last Updated**: November 6, 2025
+**Version**: 1.2  
+**Last Updated**: November 10, 2025
 
 ---
 
@@ -123,6 +123,17 @@ CREATE INDEX idx_ideas_session ON ideas(session_id);
 CREATE INDEX idx_ideas_spatial ON ideas USING gist (point(position_x, position_y));
 CREATE INDEX idx_ideas_embedding ON ideas USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
+-- Users (Authentication and Preferences)
+CREATE TABLE users (
+  id UUID PRIMARY KEY,
+  email TEXT,
+  full_name TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  metadata JSONB DEFAULT '{}'
+);
+
+CREATE INDEX idx_users_email ON users(email);
+
 -- Edges (Relationships)
 CREATE TABLE edges (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -200,6 +211,85 @@ RETURNS TABLE(id UUID, depth INT) AS $$
   SELECT * FROM ancestors;
 $$ LANGUAGE SQL;
 ```
+
+---
+
+## User Preferences System
+
+### Overview
+
+The user preferences system stores personalized settings in the `users.metadata` JSONB column, providing seamless theme and UI customization that persists across sessions.
+
+### Data Structure
+
+```json
+{
+  "preferences": {
+    "theme": "dark",
+    "gridSettings": {
+      "isVisible": true,
+      "patternType": "dots"
+    },
+    "ui": {
+      "isSidebarOpen": true,
+      "isControlPanelOpen": false,
+      "enableAnimations": true,
+      "renderQuality": "high"
+    }
+  },
+  "raw_user_meta": { /* Auth provider metadata */ }
+}
+```
+
+### Implementation Components
+
+**Type System**:
+- `UserPreferences` interface in `src/types/index.ts`
+- Strong typing for theme, grid, and UI preferences
+- Default preferences with fallback values
+
+**State Management**:
+- Enhanced `UiSlice` in Zustand store with preference loading/saving
+- Automatic synchronization between UI state and database
+- Debounced auto-save (300ms) to prevent excessive writes
+
+**Database Layer**:
+- Utility functions in `src/lib/userPreferences.ts`
+- `getUserPreferences()` - loads with defaults
+- `updateUserPreferences()` - merges partial updates
+- Convenience functions for theme/grid/UI updates
+
+**React Integration**:
+- `useUserPreferences` hook handles auto-load and auto-save
+- Listens to authentication state changes
+- Debounced preference saving when UI state changes
+
+### Preference Categories
+
+**Theme Settings**:
+- `theme`: `'light' | 'dark'`
+- Controls overall application appearance
+- Affects glass effects, text colors, and backgrounds
+
+**Grid Settings**:
+- `isVisible`: boolean - grid visibility toggle
+- `patternType`: `'grid' | 'dots' | 'none'` - visual pattern
+- Synchronized with canvas grid display
+
+**UI Settings**:
+- `isSidebarOpen`: boolean - sidebar panel state
+- `isControlPanelOpen`: boolean - control panel state
+- `enableAnimations`: boolean - animation preferences
+- `renderQuality`: `'low' | 'medium' | 'high'` - performance setting
+
+### Usage Flow
+
+1. **User Login** → `useUserPreferences` auto-loads preferences
+2. **Settings Change** → UI state updates immediately (optimistic)
+3. **300ms Delay** → Debounced save to database
+4. **Next Session** → Preferences restored automatically
+
+This system requires no user action and provides seamless preference persistence across all application sessions.
 
 ---
 

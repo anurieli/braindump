@@ -96,7 +96,36 @@ body {
   border-radius: inherit;
 }
 
-/* Canvas Grid */
+/* Canvas Patterns */
+.pattern-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Grid Pattern */
+.pattern-grid {
+  background-image:
+    linear-gradient(to right, rgba(0, 0, 0, 0.15) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.15) 1px, transparent 1px);
+}
+
+.dark .pattern-grid {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.5) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+}
+
+/* Dots Pattern */
+.pattern-dots {
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.25) 1px, transparent 1px);
+}
+
+.dark .pattern-dots {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.6) 1px, transparent 1px);
+}
+
+/* Legacy support for existing grid-overlay */
 .grid-overlay {
   position: absolute;
   inset: 0;

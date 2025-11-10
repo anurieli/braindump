@@ -1,11 +1,11 @@
 'use client'
 
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, memo } from 'react';
 import { useStore } from '@/store';
-import { getThemeTextColor } from '@/lib/themes';
+import { getThemeTextColor, themes } from '@/lib/themes';
 import { nearestPointOnRect } from '@/lib/geometry';
 
-export default function EdgeRenderer() {
+function EdgeRenderer() {
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId);
   const edges = useStore(state => state.edges);
   const ideas = useStore(state => state.ideas);
@@ -55,7 +55,10 @@ export default function EdgeRenderer() {
   if (!currentBrainDumpId || filteredEdges.length === 0) return null;
   
   const textColor = getThemeTextColor(theme);
-  const strokeColor = textColor === '#ffffff' ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.3)';
+  const isDark = themes[theme]?.isDark ?? false;
+  const strokeColor = isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.3)';
+  const labelBgColor = isDark ? 'rgba(31, 41, 55, 0.9)' : 'white';
+  const labelTextColor = isDark ? 'rgba(255, 255, 255, 0.9)' : '#374151';
   
   return (
     <svg
@@ -195,7 +198,7 @@ export default function EdgeRenderer() {
                   width="80"
                   height="24"
                   rx="12"
-                  fill={willBeRemoved ? '#fee2e2' : (isSelected ? '#dbeafe' : 'white')}
+                  fill={willBeRemoved ? '#fee2e2' : (isSelected ? '#dbeafe' : labelBgColor)}
                   stroke={lineColor}
                   strokeWidth={isSelected ? '2' : '1'}
                 />
@@ -205,7 +208,7 @@ export default function EdgeRenderer() {
                   textAnchor="middle"
                   fontSize="10"
                   fontWeight={willBeRemoved ? 'bold' : (isSelected ? 'semibold' : 'normal')}
-                  fill={willBeRemoved ? '#ef4444' : (isSelected ? '#3b82f6' : '#374151')}
+                  fill={willBeRemoved ? '#ef4444' : (isSelected ? '#3b82f6' : labelTextColor)}
                   className="select-none"
                 >
                   {edge.type}
@@ -231,3 +234,5 @@ export default function EdgeRenderer() {
     </svg>
   );
 }
+
+export default memo(EdgeRenderer);

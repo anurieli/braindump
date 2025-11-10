@@ -40,6 +40,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
     return brainDumpTheme || globalTheme;
   }, [globalTheme, currentBrainDump]);
   const isGridVisible = useStore(state => state.isGridVisible);
+  const patternType = useStore(state => state.patternType);
   const selectionBox = useStore(state => state.selectionBox);
   const isPanning = useStore(state => state.isPanning);
   const isSelecting = useStore(state => state.isSelecting);
@@ -85,9 +86,32 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   const baseGridSize = 40;
   const scaledGridSize = baseGridSize * viewport.zoom;
 
-  const gridStyle: CSSProperties = {
-    backgroundSize: `${scaledGridSize}px ${scaledGridSize}px, ${scaledGridSize}px ${scaledGridSize}px`,
-    backgroundPosition: `${viewport.x}px ${viewport.y}px, ${viewport.x}px ${viewport.y}px`,
+  const getPatternStyle = (): CSSProperties => {
+    const isDark = theme === 'dark';
+    const baseStyle = {
+      backgroundPosition: `${viewport.x}px ${viewport.y}px`,
+    };
+
+    switch (patternType) {
+      case 'grid':
+        return {
+          ...baseStyle,
+          backgroundSize: `${scaledGridSize}px ${scaledGridSize}px, ${scaledGridSize}px ${scaledGridSize}px`,
+          backgroundImage: isDark
+            ? 'linear-gradient(to right, rgba(255, 255, 255, 0.5) 1px, transparent 1px), linear-gradient(to bottom, rgba(255, 255, 255, 0.5) 1px, transparent 1px)'
+            : 'linear-gradient(to right, rgba(0, 0, 0, 0.15) 1px, transparent 1px), linear-gradient(to bottom, rgba(0, 0, 0, 0.15) 1px, transparent 1px)',
+        };
+      case 'dots':
+        return {
+          ...baseStyle,
+          backgroundSize: `${scaledGridSize}px ${scaledGridSize}px`,
+          backgroundImage: isDark
+            ? 'radial-gradient(circle, rgba(255, 255, 255, 0.6) 1px, transparent 1px)'
+            : 'radial-gradient(circle, rgba(0, 0, 0, 0.25) 1px, transparent 1px)',
+        };
+      default:
+        return baseStyle;
+    }
   };
 
   useEffect(() => {
@@ -578,8 +602,8 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
       onDragLeave={handleDragLeave}
       onDrop={handleFileDrop}
     >
-      {/* Grid Overlay */}
-      {isGridVisible && <div className="grid-overlay" style={gridStyle} />}
+      {/* Pattern Overlay */}
+      {isGridVisible && <div className="pattern-overlay" style={getPatternStyle()} />}
       
       {/* Transform Container */}
       <div
