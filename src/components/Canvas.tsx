@@ -13,6 +13,7 @@ import DetailModal from './DetailModal';
 import BatchActions from './BatchActions';
 import FileDropModal from './FileDropModal';
 import QuickIdeaInput from './QuickIdeaInput';
+import ShortcutAssistant from './ShortcutAssistant';
 import type { InputBoxHandle } from './InputBox';
 
 interface CanvasProps {
@@ -62,6 +63,12 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
   const isCreatingConnection = useStore(state => state.isCreatingConnection);
   const cancelConnection = useStore(state => state.cancelConnection);
   
+  // Shortcut assistant state
+  const shortcutAssistant = useStore(state => state.shortcutAssistant);
+  
+  // Command key state
+  const setCommandKeyPressed = useStore(state => state.setCommandKeyPressed);
+  
   // Directly access ideas object and memoize to avoid infinite loop
   // Filter ideas by current brain dump ID
   const ideasObject = useStore(state => state.ideas);
@@ -90,6 +97,11 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Track Command/Meta key
+      if (e.metaKey) {
+        setCommandKeyPressed(true);
+      }
+      
       if (e.code === 'Space') {
         const target = e.target as HTMLElement | null;
         const isInputElement = target && (
@@ -105,6 +117,11 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
+      // Track Command/Meta key
+      if (!e.metaKey) {
+        setCommandKeyPressed(false);
+      }
+      
       if (e.code === 'Space') {
         spacePressedRef.current = false;
       }
@@ -117,7 +134,7 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [setCommandKeyPressed]);
 
   // Handle mouse down
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -638,6 +655,14 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
       
       {/* Quick Idea Input */}
       <QuickIdeaInput />
+      
+      {/* Shortcut Assistant */}
+      {shortcutAssistant && (
+        <ShortcutAssistant
+          isVisible={shortcutAssistant.isVisible}
+          message={shortcutAssistant.message}
+        />
+      )}
     </div>
   );
 }
