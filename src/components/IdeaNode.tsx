@@ -13,6 +13,7 @@ interface IdeaNodeProps {
 }
 
 const GLOW_DURATION_MS = 5000;
+const DRAG_THRESHOLD = 5; // pixels
 
 const computeInitialGlowOpacity = (createdAt?: string | null) => {
   if (!createdAt) return 0;
@@ -41,6 +42,11 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const draggedIdeaId = useStore(state => state.draggedIdeaId);
   const dragHoverTargetId = useStore(state => state.dragHoverTargetId);
   const isCommandKeyPressed = useStore(state => state.isCommandKeyPressed);
+  
+  // Auto-relate mode state
+  const isAutoRelateMode = useStore(state => state.isAutoRelateMode);
+  const autoRelateParentId = useStore(state => state.autoRelateParentId);
+  const setAutoRelateMode = useStore(state => state.setAutoRelateMode);
   
   const updateIdeaPosition = useStore(state => state.updateIdeaPosition);
   const openModal = useStore(state => state.openModal);
@@ -73,6 +79,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   
   const isSelected = selectedIdeaIds.has(idea.id);
   const isConnectionSource = connectionSourceId === idea.id;
+  const isAutoRelateParent = autoRelateParentId === idea.id;
   const textColor = getThemeTextColor(theme);
   
   // Check if this idea is a parent (has children in relationships)
@@ -234,15 +241,8 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
       return;
     }
     
-    // Start dragging
-    setIsDragging(true);
-    setDraggedIdeaId(idea.id);
-    console.log('🚀 Started dragging idea:', idea.id);
-    
-    // Show shortcut assistant for edge creation
-    console.log('📢 Showing ShortcutAssistant');
-    showShortcutAssistant('Hold Command to create edges while you touch them');
-    
+    // Record initial position for drag threshold detection
+    // Don't start dragging yet - wait for mouse movement
     dragStartRef.current = {
       x: e.clientX,
       y: e.clientY,
@@ -250,62 +250,87 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
       ideaY: idea.position_y,
     };
     
-    // Store initial positions of all selected nodes for group movement
-    dragStartPositionsRef.current.clear();
-    if (isSelected && selectedIdeaIds.size > 1) {
-      // Get all ideas for current brain dump
-      const allIdeas = Object.values(ideas).filter(
-        i => i.brain_dump_id === currentBrainDumpId
-      );
-      selectedIdeaIds.forEach(id => {
-        const selectedIdea = allIdeas.find(i => i.id === id);
-        if (selectedIdea) {
-          dragStartPositionsRef.current.set(id, {
-            x: selectedIdea.position_x,
-            y: selectedIdea.position_y,
-          });
-        }
-      });
-    } else {
-      // Just this node
-      dragStartPositionsRef.current.set(idea.id, {
-        x: idea.position_x,
-        y: idea.position_y,
-      });
-    }
-    
-    // Handle selection
+    // Handle selection immediately on mouse down
     const isMultiSelect = e.metaKey || e.ctrlKey;
     if (isMultiSelect) {
       if (isSelected) {
-        removeFromSelection([idea.id]);
+        // Remove from selection
+        const newSelection = Array.from(selectedIdeaIds).filter(id => id !== idea.id);
+        setSelection(newSelection);
       } else {
-        addToSelection([idea.id]);
+        // Add to selection
+        setSelection([...Array.from(selectedIdeaIds), idea.id]);
       }
     } else {
-      if (!isSelected) {
-        setSelection([idea.id]);
-      }
+      // Single select
+      selectIdea(idea.id);
+      setSelection([idea.id]);
     }
-  }, [idea.id, idea.position_x, idea.position_y, isSelected, openModal, addToSelection, setSelection, removeFromSelection, selectIdea, selectedIdeaIds, ideas, currentBrainDumpId, isCreatingConnection, connectionSourceId, showShortcutAssistant, setDraggedIdeaId]);
+  }, [selectIdea, idea.id, isSelected, selectedIdeaIds, setSelection, isCreatingConnection, connectionSourceId, openModal]);
   
   // Use document-level mouse events for proper dragging
   useEffect(() => {
     if (!isDragging) return;
 
     const handleDocumentMouseMove = (e: MouseEvent) => {
-      const dx = (e.clientX - dragStartRef.current.x) / viewport.zoom;
-      const dy = (e.clientY - dragStartRef.current.y) / viewport.zoom;
+      if (!dragStartRef.current) return;
+
+      let dx = e.clientX - dragStartRef.current.x;
+      let dy = e.clientY - dragStartRef.current.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
       
-      // Move all selected nodes together
-      const isGroupMovement = isSelected && selectedIdeaIds.size > 1;
+      // Only start dragging if mouse has moved beyond threshold
+      if (distance > DRAG_THRESHOLD) {
+        // Start dragging
+        setIsDragging(true);
+        setDraggedIdeaId(idea.id);
+        console.log('🚀 Started dragging idea:', idea.id);
+        
+        // Show shortcut assistant for edge creation
+        console.log('📢 Showing ShortcutAssistant');
+        showShortcutAssistant('Hold Command to create edges while you touch them');
+        
+        // Store initial positions of all selected nodes for group movement
+        dragStartPositionsRef.current.clear();
+        if (isSelected && selectedIdeaIds.size > 1) {
+          // Get all ideas for current brain dump
+          const allIdeas = Object.values(ideas).filter(
+            i => i.brain_dump_id === currentBrainDumpId
+          );
+          selectedIdeaIds.forEach(id => {
+            const selectedIdea = allIdeas.find(i => i.id === id);
+            if (selectedIdea) {
+              dragStartPositionsRef.current.set(id, {
+                x: selectedIdea.position_x,
+                y: selectedIdea.position_y,
+              });
+            }
+          });
+        } else {
+          // Just this node
+          dragStartPositionsRef.current.set(idea.id, {
+            x: idea.position_x,
+            y: idea.position_y,
+          });
+        }
+      }
       
-      if (isGroupMovement) {
-        // Move all selected nodes by the same delta
-        dragStartPositionsRef.current.forEach((startPos, id) => {
-          const newX = startPos.x + dx;
-          const newY = startPos.y + dy;
-          updateIdeaPosition(id, { x: newX, y: newY });
+      // Rest of the existing mouse move logic...
+      // (only execute if actually dragging)
+      if (!isDragging) return;
+      
+      dx = e.clientX - dragStartRef.current.x;
+      dy = e.clientY - dragStartRef.current.y;
+      
+      if (isSelected && selectedIdeaIds.size > 1) {
+        // Move all selected nodes together
+        selectedIdeaIds.forEach(id => {
+          const startPos = dragStartPositionsRef.current.get(id);
+          if (startPos && id !== idea.id) {
+            const newX = startPos.x + dx;
+            const newY = startPos.y + dy;
+            updateIdeaPosition(id, { x: newX, y: newY });
+          }
         });
       } else {
         // Move just this node
@@ -429,7 +454,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   // Check if node is in generating state
   const isGenerating = idea.state === 'generating';
 
-  const baseBorder = isSelected ? '4px solid #3b82f6' 
+  const baseBorder = (isAutoRelateParent || isSelected) ? '4px solid #3b82f6' // Blue border for selection and auto-relate parent 
     : isDraggedOver ? '3px solid #10b981'
     : isParent ? '2px solid #d97706' 
     : isGenerating ? '3px solid transparent' // Transparent to show gradient behind
@@ -453,15 +478,15 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const isDarkMode = theme === 'dark';
   const baseBackground = isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.7)';
   
-  const backgroundStyle = isSelected
-    ? 'rgba(59, 130, 246, 0.05)'
-    : isDraggedOver
-      ? 'rgba(16, 185, 129, 0.05)'
-      : isParent && !isSelected && !isDraggedOver
-        ? (isDarkMode ? 'rgba(217, 119, 6, 0.05)' : 'rgba(217, 119, 6, 0.05)')
-        : glowOpacity > 0
-          ? `rgba(59, 130, 246, ${0.08 * glowOpacity})`
-          : baseBackground;
+  const backgroundStyle = (isAutoRelateParent || isSelected)
+      ? 'rgba(59, 130, 246, 0.05)' // Blue background for selection and auto-relate parent
+      : isDraggedOver
+        ? 'rgba(16, 185, 129, 0.05)'
+        : isParent && !isSelected && !isDraggedOver
+          ? (isDarkMode ? 'rgba(217, 119, 6, 0.05)' : 'rgba(217, 119, 6, 0.05)')
+          : glowOpacity > 0
+            ? `rgba(59, 130, 246, ${0.08 * glowOpacity})`
+            : baseBackground;
 
   // URL attachments for text ideas
   const [urlAttachments, setUrlAttachments] = useState<Array<{ id: string; url: string; title?: string; thumbnailUrl?: string }>>([]);

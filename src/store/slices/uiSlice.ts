@@ -55,6 +55,10 @@ export interface UiSlice {
   // Command key state
   isCommandKeyPressed: boolean
 
+  // Auto-relate mode state
+  isAutoRelateMode: boolean
+  autoRelateParentId: string | null
+
   // Performance settings
   enableAnimations: boolean
   renderQuality: 'low' | 'medium' | 'high'
@@ -114,6 +118,10 @@ export interface UiSlice {
   // Command key actions
   setCommandKeyPressed: (pressed: boolean) => void
   
+  // Auto-relate mode actions
+  setAutoRelateMode: (enabled: boolean, parentId?: string) => void
+  clearAutoRelateMode: () => void
+  
   // Performance
   setRenderQuality: (quality: 'low' | 'medium' | 'high') => void
   toggleAnimations: () => void
@@ -166,6 +174,10 @@ export const createUiSlice: StateCreator<
   
   // Command key state
   isCommandKeyPressed: false,
+
+  // Auto-relate mode state
+  isAutoRelateMode: false,
+  autoRelateParentId: null,
 
   // Performance settings
   enableAnimations: true,
@@ -421,6 +433,21 @@ export const createUiSlice: StateCreator<
     set({ isCommandKeyPressed: pressed })
   },
 
+  // Auto-relate mode actions
+  setAutoRelateMode: (enabled: boolean, parentId?: string) => {
+    set({
+      isAutoRelateMode: enabled,
+      autoRelateParentId: enabled ? (parentId || null) : null
+    })
+  },
+
+  clearAutoRelateMode: () => {
+    set({
+      isAutoRelateMode: false,
+      autoRelateParentId: null
+    })
+  },
+
   // Performance
   setRenderQuality: (quality: 'low' | 'medium' | 'high') => {
     set({ renderQuality: quality })
@@ -446,6 +473,7 @@ export const createUiSlice: StateCreator<
         isControlPanelOpen: preferences.ui.isControlPanelOpen,
         enableAnimations: preferences.ui.enableAnimations,
         renderQuality: preferences.ui.renderQuality,
+        isAutoRelateMode: preferences.ui.autoRelateMode,
       })
     } catch (error) {
       console.error('Failed to load user preferences:', error)
@@ -467,6 +495,7 @@ export const createUiSlice: StateCreator<
         isControlPanelOpen: state.isControlPanelOpen,
         enableAnimations: state.enableAnimations,
         renderQuality: state.renderQuality,
+        autoRelateMode: state.isAutoRelateMode,
       },
     }
 
@@ -488,6 +517,7 @@ export const createUiSlice: StateCreator<
       isControlPanelOpen: preferences.ui.isControlPanelOpen,
       enableAnimations: preferences.ui.enableAnimations,
       renderQuality: preferences.ui.renderQuality,
+      isAutoRelateMode: preferences.ui.autoRelateMode,
     })
   }
 })

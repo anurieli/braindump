@@ -13,6 +13,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
     isControlPanelOpen: false,
     enableAnimations: true,
     renderQuality: 'high',
+    autoRelateMode: false,
   },
 }
 
@@ -49,6 +50,7 @@ export async function getUserPreferences(userId: string): Promise<UserPreference
         isControlPanelOpen: preferences.ui?.isControlPanelOpen ?? DEFAULT_PREFERENCES.ui.isControlPanelOpen,
         enableAnimations: preferences.ui?.enableAnimations ?? DEFAULT_PREFERENCES.ui.enableAnimations,
         renderQuality: preferences.ui?.renderQuality || DEFAULT_PREFERENCES.ui.renderQuality,
+        autoRelateMode: preferences.ui?.autoRelateMode ?? DEFAULT_PREFERENCES.ui.autoRelateMode,
       },
     }
   } catch (error) {

@@ -397,6 +397,13 @@ export const useStoreActions = () => {
     openModal: store.openModal,
     closeModal: store.closeModal,
     
+    // Auto-relate mode
+    setAutoRelateMode: store.setAutoRelateMode,
+    clearAutoRelateMode: store.clearAutoRelateMode,
+    
+    // User preferences
+    savePreferencesToDB: store.savePreferencesToDB,
+    
     // Undo/Redo
     undo,
     redo,

@@ -25,6 +25,7 @@
 - Don't bypass our error boundary setup
 - Don't write 500-line components (break them up!)
 - dont leave dev servers running after useing them... close the ones you open
+- DO NOT RUN DEV SERVERS
 
 ## Project Documentation References
 Always consult these docs for implementation details and requirements:

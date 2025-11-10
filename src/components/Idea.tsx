@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { Group, Rect, Text } from 'react-konva'
-import { Idea as IdeaType } from '@/types'
+import { IdeaDB as IdeaType } from '@/types'
 import { useStore, useIsIdeaSelected } from '@/store'
 
 interface IdeaProps {
@@ -32,14 +32,22 @@ export default function Idea({
   const selectedIdeaIds = useStore(state => state.selectedIdeaIds)
   const setSelection = useStore(state => state.setSelection)
   const activeModal = useStore(state => state.activeModal)
+  
+  // Auto-relate state
+  const isAutoRelateMode = useStore(state => state.isAutoRelateMode)
+  const autoRelateParentId = useStore(state => state.autoRelateParentId)
+  const setAutoRelateMode = useStore(state => state.setAutoRelateMode)
 
   // Check if this idea is selected (using new multi-selection system)
   const isMultiSelected = useIsIdeaSelected(idea.id)
   const isSelected = selectedIdeaId === idea.id || isMultiSelected
+  
+  // Check if this idea is the auto-relate parent
+  const isAutoRelateParent = autoRelateParentId === idea.id
 
   // Determine which text to display based on view state
   const getDisplayText = useCallback(() => {
-    const text = idea.content || 'Loading...'
+    const text = idea.text || 'Loading...'
     const summary = idea.summary || ''
     
     if (viewState.isHovered && text.length > 0) {
@@ -58,13 +66,13 @@ export default function Idea({
       }
       return text
     }
-  }, [viewState.isHovered, idea.content, idea.summary])
+  }, [viewState.isHovered, idea.text, idea.summary])
 
   // Calculate dynamic dimensions based on text and view state
   const getDimensions = useCallback(() => {
     const baseWidth = idea.width || 200
     const baseHeight = idea.height || 100
-    const text = idea.content || ''
+    const text = idea.text || ''
     const summary = idea.summary || ''
     
     if (viewState.isHovered && text.length > summary.length) {
@@ -78,7 +86,7 @@ export default function Idea({
     }
     
     return { width: baseWidth, height: baseHeight }
-  }, [viewState.isHovered, idea.width, idea.height, idea.content, idea.summary])
+  }, [viewState.isHovered, idea.width, idea.height, idea.text, idea.summary])
 
   // Get colors based on idea state and selection
   const getColors = useCallback(() => {
@@ -103,18 +111,24 @@ export default function Idea({
     }
 
 
-    // Selection override
-    if (isSelected || isMultiSelected) {
+    // Auto-relate parent highlighting (takes precedence over selection)
+    if (isAutoRelateParent) {
+      strokeColor = '#a855f7' // Purple stroke for auto-relate parent
+      fillColor = '#faf5ff' // Light purple background tint
+    }
+    
+    // Selection override (but not if auto-relate parent)
+    else if (isSelected || isMultiSelected) {
       strokeColor = '#007AFF' // Blue border for selection (iOS blue to match selection rectangle)
     }
 
     // Hover state
     if (viewState.isHovered) {
-      fillColor = '#f9fafb' // Slightly darker on hover
+      fillColor = isAutoRelateParent ? '#ede9fe' : '#f9fafb' // Purple-tinted hover for auto-relate parent
     }
 
     return { fillColor, strokeColor, textColor }
-  }, [idea.state, isSelected, viewState.isHovered])
+  }, [idea.state, isSelected, isMultiSelected, isAutoRelateParent, viewState.isHovered])
 
   // Event handlers
   const handleMouseEnter = useCallback(() => {
@@ -127,6 +141,20 @@ export default function Idea({
 
   const handleClick = useCallback((e: any) => {
     const isCtrlPressed = e.evt?.ctrlKey || e.evt?.metaKey
+    
+    console.log('🖱️ Idea clicked:', { 
+      ideaId: idea.id, 
+      isAutoRelateMode, 
+      autoRelateParentId,
+      isCtrlPressed 
+    })
+    
+    // Auto-relate mode: set clicked idea as parent
+    if (isAutoRelateMode) {
+      console.log('🎯 Setting auto-relate parent to:', idea.id)
+      setAutoRelateMode(true, idea.id)
+      return // Early return to prevent normal selection behavior
+    }
     
     if (isCtrlPressed) {
       // Multi-select: toggle this idea in the selection
@@ -144,7 +172,7 @@ export default function Idea({
       // Also set as the only selected idea
       setSelection([idea.id])
     }
-  }, [selectIdea, idea.id, isMultiSelected, selectedIdeaIds, setSelection])
+  }, [selectIdea, idea.id, isMultiSelected, selectedIdeaIds, setSelection, isAutoRelateMode, setAutoRelateMode])
 
   const handleDragStart = useCallback((e: any) => {
     // Record initial positions of all selected ideas
@@ -156,19 +184,19 @@ export default function Idea({
         const selectedIdea = ideas[id]
         if (selectedIdea) {
           dragStartPositions.current.set(id, {
-            x: selectedIdea.x || 0,
-            y: selectedIdea.y || 0
+            x: selectedIdea.position_x || 0,
+            y: selectedIdea.position_y || 0
           })
         }
       })
     } else {
       // Only this idea is being dragged
       dragStartPositions.current.set(idea.id, {
-        x: idea.x || 0,
-        y: idea.y || 0
+        x: idea.position_x || 0,
+        y: idea.position_y || 0
       })
     }
-  }, [isMultiSelected, selectedIdeaIds, ideas, idea.id, idea.x, idea.y])
+  }, [isMultiSelected, selectedIdeaIds, ideas, idea.id, idea.position_x, idea.position_y])
 
   const handleDragMove = useCallback((e: any) => {
     if (!isMultiSelected || selectedIdeaIds.size === 0) return
@@ -240,8 +268,8 @@ export default function Idea({
   return (
     <Group
       ref={groupRef}
-      x={idea.x || 0}
-      y={idea.y || 0}
+      x={idea.position_x || 0}
+      y={idea.position_y || 0}
       draggable={activeModal !== 'help'}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -257,12 +285,12 @@ export default function Idea({
         height={dimensions.height}
         fill={colors.fillColor}
         stroke={colors.strokeColor}
-        strokeWidth={isSelected ? 2 : 1}
+        strokeWidth={isAutoRelateParent ? 3 : (isSelected ? 2 : 1)}
         cornerRadius={8}
-        shadowColor="rgba(0, 0, 0, 0.1)"
-        shadowBlur={viewState.isHovered ? 8 : 4}
+        shadowColor={isAutoRelateParent ? "rgba(168, 85, 247, 0.3)" : "rgba(0, 0, 0, 0.1)"}
+        shadowBlur={isAutoRelateParent ? 12 : (viewState.isHovered ? 8 : 4)}
         shadowOffset={{ x: 0, y: 2 }}
-        shadowOpacity={0.1}
+        shadowOpacity={isAutoRelateParent ? 0.4 : 0.1}
       />
 
       {/* Loading indicator for generating state */}

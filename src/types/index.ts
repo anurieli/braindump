@@ -15,6 +15,7 @@ export interface UserPreferences {
     isControlPanelOpen: boolean;
     enableAnimations: boolean;
     renderQuality: 'low' | 'medium' | 'high';
+    autoRelateMode: boolean;
   };
 }
 

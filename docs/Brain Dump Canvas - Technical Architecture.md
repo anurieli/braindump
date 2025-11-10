@@ -234,7 +234,8 @@ The user preferences system stores personalized settings in the `users.metadata`
       "isSidebarOpen": true,
       "isControlPanelOpen": false,
       "enableAnimations": true,
-      "renderQuality": "high"
+      "renderQuality": "high",
+      "autoRelateMode": false
     }
   },
   "raw_user_meta": { /* Auth provider metadata */ }
@@ -281,6 +282,7 @@ The user preferences system stores personalized settings in the `users.metadata`
 - `isControlPanelOpen`: boolean - control panel state
 - `enableAnimations`: boolean - animation preferences
 - `renderQuality`: `'low' | 'medium' | 'high'` - performance setting
+- `autoRelateMode`: boolean - automatic idea relationship creation mode
 
 ### Usage Flow
 

@@ -14,16 +14,56 @@ export function QuickInput() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const { addIdea, updateViewport } = useStoreActions()
+  const { addIdea, addEdge, updateViewport, setAutoRelateMode, clearAutoRelateMode, savePreferencesToDB } = useStoreActions()
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
   const viewport = useStore(state => state.viewport)
   const ideas = useStore(state => state.ideas)
+  const edges = useStore(state => state.edges)
   const lastPlacedIdeaPosition = useStore(state => state.lastPlacedIdeaPosition)
   const isSidebarOpen = useStore(state => state.isSidebarOpen)
+  
+  // Auto-relate mode state
+  const isAutoRelateMode = useStore(state => state.isAutoRelateMode)
+  const autoRelateParentId = useStore(state => state.autoRelateParentId)
+  
+  // Debug: Log auto-relate state changes
+  useEffect(() => {
+    console.log('🔄 Auto-relate state changed:', { isAutoRelateMode, autoRelateParentId })
+  }, [isAutoRelateMode, autoRelateParentId])
 
   const sidebarWidth = isSidebarOpen ? 320 : 0
   const IDEA_WIDTH = 200
   const IDEA_HEIGHT = 100
+
+  // Helper function to get parent idea for breadcrumb
+  const getParentIdea = () => {
+    if (!autoRelateParentId || !currentBrainDumpId) return null
+    return Object.values(ideas).find(idea => 
+      idea.id === autoRelateParentId && 
+      idea.brain_dump_id === currentBrainDumpId
+    )
+  }
+
+  // Helper function to find the parent of the current auto-relate parent
+  const getParentOfCurrentParent = () => {
+    if (!autoRelateParentId || !currentBrainDumpId) return null
+    
+    // Find an edge where the current auto-relate parent is the child
+    const parentEdge = Object.values(edges).find(edge => 
+      edge.child_id === autoRelateParentId &&
+      edge.brain_dump_id === currentBrainDumpId
+    )
+    
+    if (!parentEdge) return null
+    
+    // Return the parent idea if it exists in the current brain dump
+    return Object.values(ideas).find(idea => 
+      idea.id === parentEdge.parent_id && 
+      idea.brain_dump_id === currentBrainDumpId
+    )
+  }
+
+  const parentIdea = getParentIdea()
 
   // Create object URLs for image previews and clean them up on change/unmount
   useEffect(() => {
@@ -59,7 +99,45 @@ export function QuickInput() {
       )
 
       // Add idea with calculated position
-      await addIdea(inputText.trim(), { x, y })
+      const newIdeaId = await addIdea(inputText.trim(), { x, y })
+
+      // Auto-relate mode logic
+      if (isAutoRelateMode && newIdeaId) {
+        let parentId = autoRelateParentId
+        
+        // If no parent selected yet, auto-select the most recent idea as parent
+        if (!parentId) {
+          const allIdeas = Object.values(ideas)
+          const recentIdeas = allIdeas
+            .filter(idea => idea.brain_dump_id === currentBrainDumpId && idea.id !== newIdeaId)
+            .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+          
+          if (recentIdeas.length > 0) {
+            parentId = recentIdeas[0].id
+            console.log('🎯 Auto-selected most recent idea as parent:', parentId)
+            setAutoRelateMode(true, parentId) // Update the parent selection
+          }
+        }
+
+        // Create edge connection if we have a parent
+        console.log('🔍 Auto-relate check:', { 
+          isAutoRelateMode, 
+          originalParentId: autoRelateParentId,
+          effectiveParentId: parentId,
+          newIdeaId,
+          willCreateEdge: !!parentId
+        })
+        
+        if (parentId) {
+          try {
+            console.log('🚀 Attempting to create auto-relate edge...')
+            await addEdge(parentId, newIdeaId, 'relates-to')
+            console.log(`✅ Created auto-relate connection: ${parentId} -> ${newIdeaId}`)
+          } catch (error) {
+            console.error('❌ Failed to create auto-relate edge:', error)
+          }
+        }
+      }
 
       const ideaCenterX = x + IDEA_WIDTH / 2
       const ideaCenterY = y + IDEA_HEIGHT / 2
@@ -92,6 +170,20 @@ export function QuickInput() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSubmit()
+    }
+    
+    // Left arrow key: Navigate up the hierarchy when input is empty
+    if (e.key === 'ArrowLeft' && !inputText.trim() && isAutoRelateMode) {
+      e.preventDefault()
+      
+      const parentOfCurrent = getParentOfCurrentParent()
+      if (parentOfCurrent) {
+        // Navigate to the parent of the current parent
+        setAutoRelateMode(true, parentOfCurrent.id)
+      } else {
+        // No parent found, clear auto-relate mode
+        clearAutoRelateMode()
+      }
     }
   }
 
@@ -167,7 +259,9 @@ export function QuickInput() {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Add an idea..."
+                placeholder={isAutoRelateMode && parentIdea 
+                  ? `Add related idea to "${parentIdea.text.slice(0, 30)}${parentIdea.text.length > 30 ? '...' : ''}"` 
+                  : "Add an idea..."}
                 className="w-full bg-transparent border-0 outline-none resize-none 
                          text-gray-900 dark:text-gray-100 placeholder-gray-400 
                          dark:placeholder-gray-500 text-base leading-relaxed
@@ -237,6 +331,47 @@ export function QuickInput() {
 
             {/* Action Buttons */}
             <div className="flex items-center gap-2 flex-shrink-0 mb-2">
+              {/* Auto-Relate Toggle */}
+              <div className="flex flex-col items-center gap-1 mr-2">
+                <button
+                  onClick={async () => {
+                    if (isAutoRelateMode) {
+                      clearAutoRelateMode()
+                    } else {
+                      setAutoRelateMode(true)
+                    }
+                    
+                    // Save preference to database
+                    try {
+                      const { supabase } = await import('@/lib/supabase/client')
+                      const { data: { user } } = await supabase.auth.getUser()
+                      if (user) {
+                        await savePreferencesToDB(user.id)
+                      }
+                    } catch (error) {
+                      console.error('Failed to save auto-relate preference:', error)
+                    }
+                  }}
+                  className={`
+                    relative w-12 h-6 rounded-full transition-all duration-200 ease-in-out focus:outline-none
+                    ${isAutoRelateMode 
+                      ? 'bg-blue-500 shadow-lg' 
+                      : 'bg-gray-300 dark:bg-gray-600'
+                    }
+                  `}
+                  title={isAutoRelateMode ? "Disable Auto-Relate Mode" : "Enable Auto-Relate Mode"}
+                >
+                  <div
+                    className={`
+                      absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md 
+                      transition-transform duration-200 ease-in-out
+                      ${isAutoRelateMode ? 'translate-x-6' : 'translate-x-0'}
+                    `}
+                  />
+                </button>
+                <span className="text-xs text-gray-500 dark:text-gray-400">auto-relate</span>
+              </div>
+
               {/* File Attachment Button */}
               <button
                 onClick={handleFileSelect}

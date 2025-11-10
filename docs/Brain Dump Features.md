@@ -179,6 +179,7 @@
 - Grid settings (visibility, pattern type)
 - UI state preferences (sidebar, control panel)
 - Performance settings (animation, render quality)
+- Auto-relate mode for automatic idea relationship creation
 - Automatic synchronization with database (300ms debounced)
 
 **Session Persistence**

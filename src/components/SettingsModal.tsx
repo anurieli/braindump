@@ -14,6 +14,7 @@ export default function SettingsModal() {
   const enableAnimations = useStore(state => state.enableAnimations)
   const renderQuality = useStore(state => state.renderQuality)
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
+  const isAutoRelateMode = useStore(state => state.isAutoRelateMode)
   
   // Actions
   const setTheme = useStore(state => state.setTheme)
@@ -21,6 +22,8 @@ export default function SettingsModal() {
   const toggleAnimations = useStore(state => state.toggleAnimations)
   const setRenderQuality = useStore(state => state.setRenderQuality)
   const updateBrainDumpTheme = useStore(state => state.updateBrainDumpTheme)
+  const setAutoRelateMode = useStore(state => state.setAutoRelateMode)
+  const savePreferencesToDB = useStore(state => state.savePreferencesToDB)
   
   const isOpen = activeModal === 'settings'
 
@@ -132,6 +135,41 @@ export default function SettingsModal() {
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                       isGridVisible ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Auto-Relate Mode */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Auto-Relate Mode
+                  </label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Automatically relate new ideas to selected parent
+                  </p>
+                </div>
+                <button
+                  onClick={async () => {
+                    setAutoRelateMode(!isAutoRelateMode)
+                    // Save preference to database
+                    try {
+                      const { data: { user } } = await import('@/lib/supabase/client').then(m => m.supabase.auth.getUser())
+                      if (user) {
+                        await savePreferencesToDB(user.id)
+                      }
+                    } catch (error) {
+                      console.error('Failed to save auto-relate preference:', error)
+                    }
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    isAutoRelateMode ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      isAutoRelateMode ? 'translate-x-6' : 'translate-x-1'
                     }`}
                   />
                 </button>

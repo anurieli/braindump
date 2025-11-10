@@ -2,7 +2,7 @@
 
 import React, { useState, KeyboardEvent, useRef, useMemo, forwardRef, useImperativeHandle, useEffect } from 'react'
 import { Plus, X, Paperclip } from 'lucide-react'
-import { useStore } from '@/store'
+import { useStore, useStoreActions } from '@/store'
 import type { ThemeType } from '@/types'
 import { Button } from '@/components/ui/button'
 import { findNonOverlappingPosition as findPosition } from '@/lib/idea-positioning'
@@ -137,7 +137,23 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
   const lastPlacedIdeaPosition = useStore(state => state.lastPlacedIdeaPosition)
   const updateViewport = useStore(state => state.updateViewport)
   
+  // Auto-relate state
+  const isAutoRelateMode = useStore(state => state.isAutoRelateMode)
+  const autoRelateParentId = useStore(state => state.autoRelateParentId)
+  const { addEdge, setAutoRelateMode, clearAutoRelateMode, savePreferencesToDB } = useStoreActions()
+  
   const sidebarWidth = isSidebarOpen ? 320 : 0 // 320px is the width from SidePanel
+
+  // Helper function to get parent idea for placeholder text
+  const getParentIdea = () => {
+    if (!autoRelateParentId || !currentBrainDumpId) return null
+    return Object.values(ideas).find(idea => 
+      idea.id === autoRelateParentId && 
+      idea.brain_dump_id === currentBrainDumpId
+    )
+  }
+
+  const parentIdea = getParentIdea()
 
   // Expose methods to parent component through ref
   useImperativeHandle(ref, () => ({
@@ -249,6 +265,16 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
       
       // Call addIdea with text and position (handles database insertion)
       const ideaId = await addIdea((inputValue || '').trim(), { x, y })
+      
+      // Create edge connection if in auto-relate mode
+      if (isAutoRelateMode && autoRelateParentId && ideaId) {
+        try {
+          await addEdge(autoRelateParentId, ideaId, 'relates-to')
+          console.log(`🔗 Created auto-relate connection: ${autoRelateParentId} -> ${ideaId}`)
+        } catch (error) {
+          console.error('Failed to create auto-relate edge:', error)
+        }
+      }
 
       // Create URL attachments in background
       const urlAttachments = attachments.filter(a => a.type === 'url' && a.url)
@@ -506,7 +532,9 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="Capture your thoughts..."
+            placeholder={isAutoRelateMode && parentIdea 
+              ? `Add related idea to "${parentIdea.text.slice(0, 30)}${parentIdea.text.length > 30 ? '...' : ''}"` 
+              : "Capture your thoughts..."}
             className="w-full bg-transparent outline-none text-lg placeholder-opacity-60 resize-none"
             style={{ 
               color: textColors.primary,
@@ -603,16 +631,64 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
 
         {/* Add files area */}
         <div className="px-6 pb-5 pt-4">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 transition-colors text-sm group"
-            style={{ color: textColors.secondary }}
-            onMouseEnter={(e) => e.currentTarget.style.color = textColors.primary}
-            onMouseLeave={(e) => e.currentTarget.style.color = textColors.secondary}
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add tabs or files</span>
-          </button>
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-2 transition-colors text-sm group"
+              style={{ color: textColors.secondary }}
+              onMouseEnter={(e) => e.currentTarget.style.color = textColors.primary}
+              onMouseLeave={(e) => e.currentTarget.style.color = textColors.secondary}
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add tabs or files</span>
+            </button>
+            
+            {/* Auto-Relate Toggle */}
+            <div className="flex flex-col items-center gap-1">
+              <button
+                onClick={async () => {
+                  console.log('🔄 Toggle clicked! Current state:', isAutoRelateMode)
+                  if (isAutoRelateMode) {
+                    clearAutoRelateMode()
+                    console.log('🔴 Auto-relate disabled')
+                  } else {
+                    setAutoRelateMode(true)
+                    console.log('🟢 Auto-relate enabled')
+                  }
+                  
+                  // Save preference to database
+                  try {
+                    const { supabase } = await import('@/lib/supabase/client')
+                    const { data: { user } } = await supabase.auth.getUser()
+                    if (user) {
+                      await savePreferencesToDB(user.id)
+                    }
+                  } catch (error) {
+                    console.error('Failed to save auto-relate preference:', error)
+                  }
+                }}
+                className={`
+                  relative w-12 h-6 rounded-full transition-all duration-200 ease-in-out focus:outline-none
+                  ${isAutoRelateMode 
+                    ? 'bg-blue-500 shadow-lg' 
+                    : 'bg-gray-300 dark:bg-gray-600'
+                  }
+                `}
+                title={isAutoRelateMode ? "Disable Auto-Relate Mode" : "Enable Auto-Relate Mode"}
+              >
+                <div
+                  className={`
+                    absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md 
+                    transition-transform duration-200 ease-in-out
+                    ${isAutoRelateMode ? 'translate-x-6' : 'translate-x-0'}
+                  `}
+                />
+              </button>
+              <span className="text-xs" style={{ color: textColors.tertiary }}>auto-relate</span>
+              
+
+            </div>
+          </div>
           <input
             ref={fileInputRef}
             type="file"

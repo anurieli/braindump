@@ -159,7 +159,8 @@ CREATE TABLE users (
   --       isSidebarOpen: boolean,
   --       isControlPanelOpen: boolean,
   --       enableAnimations: boolean,
-  --       renderQuality: 'low' | 'medium' | 'high'
+  --       renderQuality: 'low' | 'medium' | 'high',
+  --       autoRelateMode: boolean
   --     }
   --   },
   --   raw_user_meta: { ... } -- Auth provider metadata
