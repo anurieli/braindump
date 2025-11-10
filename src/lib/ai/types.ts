@@ -26,6 +26,6 @@ export interface AIRunResult<T> {
   usage: AIRunUsage
 }
 
-export type AITask = 'summarization' | 'embedding' | 'image-generation'
+export type AITask = 'summarization' | 'embedding'
 
 

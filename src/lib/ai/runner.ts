@@ -1,13 +1,11 @@
 import type { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions'
 import type { EmbeddingCreateParams } from 'openai/resources/embeddings'
-import type { ImageGenerateParams } from 'openai/resources/images'
 import { getOpenAIClient } from './clients'
 import { getModelConfig } from './models'
 import type { AIRunResult, AIRunUsage, AITask } from './types'
 
 type ChatTask = Extract<AITask, 'summarization'>
 type EmbeddingTask = Extract<AITask, 'embedding'>
-type ImageTask = Extract<AITask, 'image-generation'>
 
 export interface ChatRunOptions {
   messages: ChatCompletionCreateParamsNonStreaming['messages']
@@ -17,11 +15,6 @@ export interface ChatRunOptions {
 export interface EmbeddingRunOptions {
   input: EmbeddingCreateParams['input']
   overrides?: Partial<Omit<EmbeddingCreateParams, 'input' | 'model'>>
-}
-
-export interface ImageRunOptions {
-  prompt: string
-  overrides?: Partial<Omit<ImageGenerateParams, 'prompt' | 'model'>>
 }
 
 const calculateCost = (
@@ -91,32 +84,6 @@ export const runEmbeddingTask = async (
     data: embedding,
     model,
     usage: buildUsage(task, response.usage?.prompt_tokens, response.usage?.completion_tokens),
-  }
-}
-
-export const runImageTask = async (
-  task: ImageTask,
-  { prompt, overrides }: ImageRunOptions
-): Promise<AIRunResult<string>> => {
-  const model = getModelConfig(task)
-  const client = getOpenAIClient()
-
-  const params: ImageGenerateParams = {
-    model: model.id,
-    prompt,
-    n: 1,
-    size: '1024x1024',
-    ...(model.defaultParams ?? {}),
-    ...(overrides ?? {}),
-  }
-
-  const response = await client.images.generate(params)
-  const imageUrl = response.data[0]?.url ?? ''
-
-  return {
-    data: imageUrl,
-    model,
-    usage: { cost: model.pricing.output }, // Flat cost per image
   }
 }
 
