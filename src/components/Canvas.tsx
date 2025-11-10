@@ -95,8 +95,9 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Track Command/Meta key state
-      if (e.metaKey || e.key === 'Meta') {
+      // Track Command/Meta key state (Meta on Mac, Control on Windows/Linux)
+      if (e.metaKey || e.ctrlKey || e.key === 'Meta' || e.key === 'Control') {
+        console.log('⌨️ Command key pressed');
         setCommandKeyPressed(true);
       }
       
@@ -116,7 +117,8 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
 
     const handleKeyUp = (e: KeyboardEvent) => {
       // Track Command/Meta key state
-      if (!e.metaKey && e.key === 'Meta') {
+      if (e.key === 'Meta' || e.key === 'Control') {
+        console.log('⌨️ Command key released');
         setCommandKeyPressed(false);
       }
       

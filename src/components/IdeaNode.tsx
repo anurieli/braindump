@@ -232,6 +232,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
     console.log('🚀 Started dragging idea:', idea.id);
     
     // Show shortcut assistant for edge creation
+    console.log('📢 Showing ShortcutAssistant');
     showShortcutAssistant('Hold Command to create edges while you touch them');
     
     dragStartRef.current = {
@@ -324,6 +325,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
             
             // Only create/delete edges if Command key is pressed
             if (isCommandKeyPressed) {
+              console.log('✅ Command pressed - processing edge creation/deletion');
               // Check if edge already exists
               const existingEdge = Object.values(edges).find(
                 edge => edge.brain_dump_id === currentBrainDumpId && 
