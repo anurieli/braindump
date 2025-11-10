@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '@/store';
 import { signOut } from '@/lib/auth-helpers';
 import { useRouter } from 'next/navigation';
+import { saveUserPreferencesManually } from '@/hooks/useUserPreferences';
 import { 
   ChevronRight, 
   ChevronLeft,
@@ -32,6 +33,7 @@ export default function SidePanel() {
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [timestampTrigger, setTimestampTrigger] = useState(0);
   
   const isDark = themes[theme]?.isDark ?? false;
   
@@ -65,17 +67,37 @@ export default function SidePanel() {
     }
   };
 
+  const handleToggleSidebar = async () => {
+    toggleSidebar();
+    
+    // Save sidebar preference to database
+    try {
+      await saveUserPreferencesManually();
+    } catch (error) {
+      console.error('Failed to save sidebar preference:', error);
+    }
+  };
+
   const handleSidebarClick = (e: React.MouseEvent) => {
     // Check if the click is on an interactive element or its children
     const target = e.target as HTMLElement;
     const isInteractive = target.closest('button, input, a, [role="button"], [onclick]');
-    
+
     // Only toggle if clicking on empty space (not on interactive elements)
     // Interactive elements should call e.stopPropagation() to prevent this
     if (!isInteractive) {
-      toggleSidebar();
+      handleToggleSidebar();
     }
   };
+
+  // Update timestamps every minute for real-time display
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimestampTrigger(prev => prev + 1);
+    }, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, []);
 
   const formatDate = (date: Date) => {
     const now = new Date();
@@ -83,9 +105,9 @@ export default function SidePanel() {
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
-    
+
     if (diffMins < 1) {
-      return 'just now';
+      return 'now';
     } else if (diffMins < 60) {
       return `${diffMins}m ago`;
     } else if (diffHours < 24) {
@@ -93,8 +115,8 @@ export default function SidePanel() {
     } else if (diffDays < 7) {
       return `${diffDays}d ago`;
     } else {
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
         day: 'numeric',
         year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
       });
@@ -137,7 +159,7 @@ export default function SidePanel() {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            toggleSidebar();
+            handleToggleSidebar();
           }}
           className={`p-2 rounded-lg transition-colors flex-shrink-0 ${isDark ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-200 text-gray-400'}`}
           title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
