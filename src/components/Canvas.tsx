@@ -400,11 +400,28 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
     e.stopPropagation();
   }, [currentBrainDump, isPanning, isSelecting, isCreatingConnection, showQuickEditor]);
 
+  // Pinch gesture state for trackpad/touch pinch-to-zoom
+  const pinchStateRef = useRef<{
+    isActive: boolean;
+    initialZoom: number;
+    initialScale: number;
+    centerX: number;
+    centerY: number;
+  }>({
+    isActive: false,
+    initialZoom: 1,
+    initialScale: 1,
+    centerX: 0,
+    centerY: 0
+  });
+
   // Handle wheel (zoom) - must use native event listener with passive: false
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!currentBrainDump) return;
 
-    const isZoomGesture = e.metaKey || e.shiftKey;
+    // Check for trackpad pinch gesture (ctrlKey is typically set during pinch on many browsers)
+    const isPinchGesture = e.ctrlKey && Math.abs(e.deltaY) > 0;
+    const isZoomGesture = e.metaKey || e.shiftKey || isPinchGesture;
 
     if (!isZoomGesture) {
       e.preventDefault();
@@ -425,10 +442,11 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
 
     e.preventDefault();
     
-    const delta = -e.deltaY * 0.001;
+    // Different zoom sensitivity for pinch vs wheel
+    const delta = isPinchGesture ? -e.deltaY * 0.01 : -e.deltaY * 0.001;
     const newZoom = Math.max(0.1, Math.min(3, viewport.zoom + delta));
     
-    // Zoom towards mouse position
+    // Zoom towards mouse/touch position
     if (canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
@@ -452,17 +470,162 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
     }
   }, [viewport, updateViewport, currentBrainDump]);
 
-  // Attach wheel event listener with passive: false to allow preventDefault
+  // Handle Safari/Webkit gesture events for pinch-to-zoom
+  const handleGestureStart = useCallback((e: any) => {
+    if (!currentBrainDump) return;
+    
+    e.preventDefault();
+    pinchStateRef.current.isActive = true;
+    pinchStateRef.current.initialZoom = viewport.zoom;
+    pinchStateRef.current.initialScale = e.scale;
+    
+    if (canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      pinchStateRef.current.centerX = e.clientX - rect.left;
+      pinchStateRef.current.centerY = e.clientY - rect.top;
+    }
+  }, [currentBrainDump, viewport.zoom]);
+
+  const handleGestureChange = useCallback((e: any) => {
+    if (!currentBrainDump || !pinchStateRef.current.isActive) return;
+    
+    e.preventDefault();
+    
+    // Calculate new zoom based on gesture scale
+    const scaleRatio = e.scale / pinchStateRef.current.initialScale;
+    const newZoom = Math.max(0.1, Math.min(3, pinchStateRef.current.initialZoom * scaleRatio));
+    
+    // Zoom towards gesture center point
+    if (canvasRef.current) {
+      const centerX = pinchStateRef.current.centerX;
+      const centerY = pinchStateRef.current.centerY;
+      
+      // Calculate the point in canvas coordinates before zoom
+      const canvasPointBefore = screenToCanvas(centerX, centerY, viewport.x, viewport.y, viewport.zoom);
+      
+      // Calculate the point in canvas coordinates after zoom
+      const canvasPointAfter = screenToCanvas(centerX, centerY, viewport.x, viewport.y, newZoom);
+      
+      // Adjust pan to keep the point under the gesture center
+      const dx = (canvasPointAfter.x - canvasPointBefore.x) * newZoom;
+      const dy = (canvasPointAfter.y - canvasPointBefore.y) * newZoom;
+      
+      updateViewport({
+        x: viewport.x + dx,
+        y: viewport.y + dy,
+        zoom: newZoom
+      });
+    }
+  }, [currentBrainDump, viewport, updateViewport]);
+
+  const handleGestureEnd = useCallback((e: any) => {
+    if (!currentBrainDump) return;
+    
+    e.preventDefault();
+    pinchStateRef.current.isActive = false;
+  }, [currentBrainDump]);
+
+  // Handle touch events for cross-browser pinch-to-zoom support
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+    if (!currentBrainDump || e.touches.length !== 2) return;
+    
+    e.preventDefault();
+    
+    const touch1 = e.touches[0];
+    const touch2 = e.touches[1];
+    
+    const distance = Math.sqrt(
+      Math.pow(touch2.clientX - touch1.clientX, 2) +
+      Math.pow(touch2.clientY - touch1.clientY, 2)
+    );
+    
+    pinchStateRef.current.isActive = true;
+    pinchStateRef.current.initialZoom = viewport.zoom;
+    pinchStateRef.current.initialScale = distance;
+    
+    if (canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      pinchStateRef.current.centerX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
+      pinchStateRef.current.centerY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
+    }
+  }, [currentBrainDump, viewport.zoom]);
+
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (!currentBrainDump || !pinchStateRef.current.isActive || e.touches.length !== 2) return;
+    
+    e.preventDefault();
+    
+    const touch1 = e.touches[0];
+    const touch2 = e.touches[1];
+    
+    const distance = Math.sqrt(
+      Math.pow(touch2.clientX - touch1.clientX, 2) +
+      Math.pow(touch2.clientY - touch1.clientY, 2)
+    );
+    
+    // Calculate new zoom based on distance change
+    const scaleRatio = distance / pinchStateRef.current.initialScale;
+    const newZoom = Math.max(0.1, Math.min(3, pinchStateRef.current.initialZoom * scaleRatio));
+    
+    // Zoom towards touch center point
+    if (canvasRef.current) {
+      const centerX = pinchStateRef.current.centerX;
+      const centerY = pinchStateRef.current.centerY;
+      
+      // Calculate the point in canvas coordinates before zoom
+      const canvasPointBefore = screenToCanvas(centerX, centerY, viewport.x, viewport.y, viewport.zoom);
+      
+      // Calculate the point in canvas coordinates after zoom
+      const canvasPointAfter = screenToCanvas(centerX, centerY, viewport.x, viewport.y, newZoom);
+      
+      // Adjust pan to keep the point under the gesture center
+      const dx = (canvasPointAfter.x - canvasPointBefore.x) * newZoom;
+      const dy = (canvasPointAfter.y - canvasPointBefore.y) * newZoom;
+      
+      updateViewport({
+        x: viewport.x + dx,
+        y: viewport.y + dy,
+        zoom: newZoom
+      });
+    }
+  }, [currentBrainDump, viewport, updateViewport]);
+
+  const handleTouchEnd = useCallback((e: TouchEvent) => {
+    if (!currentBrainDump) return;
+    
+    if (e.touches.length < 2) {
+      pinchStateRef.current.isActive = false;
+    }
+  }, [currentBrainDump]);
+
+  // Attach wheel, gesture, and touch event listeners
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    // Wheel events for zoom
     canvas.addEventListener('wheel', handleWheel, { passive: false });
+
+    // Safari/Webkit gesture events for trackpad pinch
+    canvas.addEventListener('gesturestart', handleGestureStart, { passive: false });
+    canvas.addEventListener('gesturechange', handleGestureChange, { passive: false });
+    canvas.addEventListener('gestureend', handleGestureEnd, { passive: false });
+
+    // Touch events for cross-browser pinch support
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
 
     return () => {
       canvas.removeEventListener('wheel', handleWheel);
+      canvas.removeEventListener('gesturestart', handleGestureStart);
+      canvas.removeEventListener('gesturechange', handleGestureChange);
+      canvas.removeEventListener('gestureend', handleGestureEnd);
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [handleWheel]);
+  }, [handleWheel, handleGestureStart, handleGestureChange, handleGestureEnd, handleTouchStart, handleTouchMove, handleTouchEnd]);
 
   // Connection handling - add global mouse up
   
