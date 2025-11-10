@@ -285,12 +285,24 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
         return
       }
 
-      // Calculate viewport center, accounting for sidebar
-      const viewportCenterX = (sidebarWidth + (window.innerWidth - sidebarWidth) / 2 - viewport.x) / viewport.zoom
-      const viewportCenterY = (window.innerHeight / 2 - viewport.y) / viewport.zoom
+      // Calculate position based on context
+      let centerX, centerY, placementAnchor
+      
+      if (isAutoRelateMode && pendingParentId && parentIdea) {
+        // In auto-relate mode with parent: use parent's position as anchor
+        centerX = parentIdea.position_x
+        centerY = parentIdea.position_y
+        placementAnchor = { x: parentIdea.position_x, y: parentIdea.position_y }
+        console.log('📍 Positioning relative to parent:', pendingParentId, 'at', centerX, centerY)
+      } else {
+        // Normal mode or no parent: use viewport center
+        centerX = (sidebarWidth + (window.innerWidth - sidebarWidth) / 2 - viewport.x) / viewport.zoom
+        centerY = (window.innerHeight / 2 - viewport.y) / viewport.zoom
+        placementAnchor = lastPlacedIdeaPosition
+      }
       
       // Find a non-overlapping position using smart placement
-      const { x, y } = findPosition(ideas, viewportCenterX, viewportCenterY, lastPlacedIdeaPosition, 220, currentBrainDumpId)
+      const { x, y } = findPosition(ideas, centerX, centerY, placementAnchor, 220, currentBrainDumpId)
       
       // Call addIdea with text and position (handles database insertion)
       const ideaId = await addIdea((inputValue || '').trim(), { x, y })
@@ -500,6 +512,7 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
   const textColors = getThemeTextColor(theme)
   const glassStyle = getThemeGlassStyle(theme)
   const liquidGlassStyle = getLiquidGlassStyle(theme)
+  const isDarkMode = themeDefinitions[theme]?.isDark ?? false
 
   return (
     <div 
@@ -700,48 +713,77 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
             
             {/* Auto-Relate Toggle */}
             <div className="flex flex-col items-center gap-1">
-              <button
-                onClick={async () => {
-                  console.log('🔄 Toggle clicked! Current state:', isAutoRelateMode)
-                  if (isAutoRelateMode) {
-                    clearAutoRelateMode()
-                    console.log('🔴 Auto-relate disabled')
-                  } else {
-                    setAutoRelateMode(true)
-                    console.log('🟢 Auto-relate enabled')
-                  }
-                  
-                  // Save preference to database
-                  try {
-                    const { supabase } = await import('@/lib/supabase/client')
-                    const { data: { user } } = await supabase.auth.getUser()
-                    if (user) {
-                      await savePreferencesToDB(user.id)
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={async () => {
+                    console.log('🔄 Toggle clicked! Current state:', isAutoRelateMode)
+                    if (isAutoRelateMode) {
+                      clearAutoRelateMode()
+                      console.log('🔴 Auto-relate disabled')
+                    } else {
+                      setAutoRelateMode(true)
+                      console.log('🟢 Auto-relate enabled')
                     }
-                  } catch (error) {
-                    console.error('Failed to save auto-relate preference:', error)
-                  }
-                }}
-                className={`
-                  relative w-12 h-6 rounded-full transition-all duration-200 ease-in-out focus:outline-none
-                  ${isAutoRelateMode 
-                    ? 'bg-blue-500 shadow-lg' 
-                    : 'bg-gray-300 dark:bg-gray-600'
-                  }
-                `}
-                title={isAutoRelateMode ? "Disable Auto-Relate Mode" : "Enable Auto-Relate Mode"}
-              >
-                <div
+                    
+                    // Save preference to database
+                    try {
+                      const { supabase } = await import('@/lib/supabase/client')
+                      const { data: { user } } = await supabase.auth.getUser()
+                      if (user) {
+                        await savePreferencesToDB(user.id)
+                      }
+                    } catch (error) {
+                      console.error('Failed to save auto-relate preference:', error)
+                    }
+                  }}
                   className={`
-                    absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md 
-                    transition-transform duration-200 ease-in-out
-                    ${isAutoRelateMode ? 'translate-x-6' : 'translate-x-0'}
+                    relative w-12 h-6 rounded-full transition-all duration-200 ease-in-out focus:outline-none
+                    ${isAutoRelateMode 
+                      ? 'bg-blue-500 shadow-lg' 
+                      : 'bg-gray-300 dark:bg-gray-600'
+                    }
                   `}
-                />
-              </button>
-              <span className="text-xs" style={{ color: textColors.tertiary }}>auto-relate</span>
-              
-
+                  title={isAutoRelateMode ? "Disable train-of-thought mode" : "Enable train-of-thought mode"}
+                >
+                  <div
+                    className={`
+                      absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md 
+                      transition-transform duration-200 ease-in-out
+                      ${isAutoRelateMode ? 'translate-x-6' : 'translate-x-0'}
+                    `}
+                  />
+                </button>
+                <div 
+                  className="group relative"
+                  style={{ color: textColors.tertiary }}
+                >
+                  <svg 
+                    className="w-3.5 h-3.5 cursor-help opacity-60 hover:opacity-100 transition-opacity" 
+                    fill="none" 
+                    viewBox="0 0 24 24" 
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="absolute bottom-full right-0 mb-2 w-56 p-3 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none z-50"
+                    style={{
+                      background: isDarkMode ? 'rgba(30, 30, 30, 0.98)' : 'rgba(255, 255, 255, 0.98)',
+                      backdropFilter: 'blur(12px)',
+                      border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+                      color: textColors.primary
+                    }}
+                  >
+                    <p className="text-xs leading-relaxed">
+                      <span className="font-semibold">Build idea chains effortlessly.</span>
+                      <br />
+                      <span style={{ color: textColors.secondary }}>
+                        Select a node → new ideas auto-connect below it. Press ESC to deselect. Use ← to navigate to previous node. Every new idea automatically becomes the parent of the next idea.
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <span className="text-xs" style={{ color: textColors.tertiary }}>train-of-thought</span>
             </div>
           </div>
           <input
