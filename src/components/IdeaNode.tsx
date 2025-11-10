@@ -1,8 +1,8 @@
 'use client'
 
-import { useRef, useState, useCallback, useEffect, useLayoutEffect, memo } from 'react';
+import { useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react';
 import { useStore } from '@/store';
-import { getThemeTextColor, themes } from '@/lib/themes';
+import { getThemeTextColor } from '@/lib/themes';
 import type { IdeaDB } from '@/types';
 import { Paperclip, Move } from 'lucide-react';
 import AttachmentNode from './AttachmentNode';
@@ -28,7 +28,7 @@ const computeInitialGlowOpacity = (createdAt?: string | null) => {
   return Math.max(0, 1 - age / GLOW_DURATION_MS);
 };
 
-function IdeaNode({ idea }: IdeaNodeProps) {
+export default function IdeaNode({ idea }: IdeaNodeProps) {
   const theme = useStore(state => state.theme);
   const selectedIdeaIds = useStore(state => state.selectedIdeaIds);
   const viewport = useStore(state => state.viewport);
@@ -40,6 +40,7 @@ function IdeaNode({ idea }: IdeaNodeProps) {
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId);
   const draggedIdeaId = useStore(state => state.draggedIdeaId);
   const dragHoverTargetId = useStore(state => state.dragHoverTargetId);
+  const isCommandKeyPressed = useStore(state => state.isCommandKeyPressed);
   
   const updateIdeaPosition = useStore(state => state.updateIdeaPosition);
   const openModal = useStore(state => state.openModal);
@@ -56,7 +57,8 @@ function IdeaNode({ idea }: IdeaNodeProps) {
   const deleteEdge = useStore(state => state.deleteEdge);
   const setDraggedIdeaId = useStore(state => state.setDraggedIdeaId);
   const setDragHoverTargetId = useStore(state => state.setDragHoverTargetId);
-  const activeModal = useStore(state => state.activeModal);
+  const showShortcutAssistant = useStore(state => state.showShortcutAssistant);
+  const hideShortcutAssistant = useStore(state => state.hideShortcutAssistant);
   
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -72,7 +74,6 @@ function IdeaNode({ idea }: IdeaNodeProps) {
   const isSelected = selectedIdeaIds.has(idea.id);
   const isConnectionSource = connectionSourceId === idea.id;
   const textColor = getThemeTextColor(theme);
-  const isDark = themes[theme]?.isDark ?? false;
   
   // Check if this idea is a parent (has children in relationships)
   const isParent = Object.values(edges).some(
@@ -200,9 +201,6 @@ function IdeaNode({ idea }: IdeaNodeProps) {
   }, [hoveredNodeId, isCreatingConnection, connectionSourceId, idea.id, touchedNodesInConnection, currentBrainDumpId]);
   
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    // Prevent dragging when help modal is open
-    if (activeModal === 'help') return;
-    
     // Don't handle if clicking on the connection handle
     if ((e.target as HTMLElement).closest('.connection-handle')) {
       return;
@@ -232,6 +230,11 @@ function IdeaNode({ idea }: IdeaNodeProps) {
     setIsDragging(true);
     setDraggedIdeaId(idea.id);
     console.log('🚀 Started dragging idea:', idea.id);
+    
+    // Show shortcut assistant for edge creation
+    console.log('📢 Showing ShortcutAssistant');
+    showShortcutAssistant('Hold Command to create edges while you touch them');
+    
     dragStartRef.current = {
       x: e.clientX,
       y: e.clientY,
@@ -265,27 +268,18 @@ function IdeaNode({ idea }: IdeaNodeProps) {
     
     // Handle selection
     const isMultiSelect = e.metaKey || e.ctrlKey;
-    const isShiftSelect = e.shiftKey;
-    
     if (isMultiSelect) {
-      // Cmd/Ctrl+click: toggle individual selection
       if (isSelected) {
         removeFromSelection([idea.id]);
       } else {
         addToSelection([idea.id]);
       }
-    } else if (isShiftSelect) {
-      // Shift+click: add to selection (don't toggle)
-      if (!isSelected) {
-        addToSelection([idea.id]);
-      }
     } else {
-      // Regular click: set single selection
       if (!isSelected) {
         setSelection([idea.id]);
       }
     }
-  }, [idea.id, idea.position_x, idea.position_y, isSelected, activeModal, openModal, addToSelection, setSelection, removeFromSelection, selectIdea, selectedIdeaIds, ideas, currentBrainDumpId, isCreatingConnection, connectionSourceId]);
+  }, [idea.id, idea.position_x, idea.position_y, isSelected, openModal, addToSelection, setSelection, removeFromSelection, selectIdea, selectedIdeaIds, ideas, currentBrainDumpId, isCreatingConnection, connectionSourceId, showShortcutAssistant, setDraggedIdeaId]);
   
   // Use document-level mouse events for proper dragging
   useEffect(() => {
@@ -325,25 +319,29 @@ function IdeaNode({ idea }: IdeaNodeProps) {
           const targetIdeaId = (ideaElementUnderMouse as HTMLElement).dataset.ideaId;
           const previousTargetId = dragHoverTargetId;
           
-          // Only process if we're hovering over a new target
+          // Only process if we're hovering over a new target AND Command key is pressed
           if (targetIdeaId && targetIdeaId !== previousTargetId) {
             console.log(`🎯 Touch detected: ${idea.id} touching ${targetIdeaId}`);
             
-            // Check if edge already exists
-            const existingEdge = Object.values(edges).find(
-              edge => edge.brain_dump_id === currentBrainDumpId && 
-                      edge.parent_id === idea.id && 
-                      edge.child_id === targetIdeaId
-            );
-            
-            if (existingEdge) {
-              // Delete existing edge
-              deleteEdge(existingEdge.id);
-              console.log(`🗑️ Removed edge from ${idea.id} to ${targetIdeaId}`);
-            } else {
-              // Create new edge
-              addEdge(idea.id, targetIdeaId, 'related_to');
-              console.log(`✅ Created edge from ${idea.id} to ${targetIdeaId}`);
+            // Only create/delete edges if Command key is pressed
+            if (isCommandKeyPressed) {
+              console.log('✅ Command pressed - processing edge creation/deletion');
+              // Check if edge already exists
+              const existingEdge = Object.values(edges).find(
+                edge => edge.brain_dump_id === currentBrainDumpId && 
+                        edge.parent_id === idea.id && 
+                        edge.child_id === targetIdeaId
+              );
+              
+              if (existingEdge) {
+                // Delete existing edge
+                deleteEdge(existingEdge.id);
+                console.log(`🗑️ Removed edge from ${idea.id} to ${targetIdeaId}`);
+              } else {
+                // Create new edge
+                addEdge(idea.id, targetIdeaId, 'related_to');
+                console.log(`✅ Created edge from ${idea.id} to ${targetIdeaId}`);
+              }
             }
           }
           
@@ -362,6 +360,9 @@ function IdeaNode({ idea }: IdeaNodeProps) {
         setDraggedIdeaId(null);
         setDragHoverTargetId(null);
         console.log('🏁 Finished dragging idea:', idea.id);
+        
+        // Hide shortcut assistant
+        hideShortcutAssistant();
       }
     };
 
@@ -372,7 +373,7 @@ function IdeaNode({ idea }: IdeaNodeProps) {
       document.removeEventListener('mousemove', handleDocumentMouseMove);
       document.removeEventListener('mouseup', handleDocumentMouseUp);
     };
-  }, [isDragging, viewport.zoom, idea.id, updateIdeaPosition, isSelected, selectedIdeaIds, draggedIdeaId, dragHoverTargetId, setDraggedIdeaId, setDragHoverTargetId, edges, currentBrainDumpId, addEdge, deleteEdge]);
+  }, [isDragging, viewport.zoom, idea.id, updateIdeaPosition, isSelected, selectedIdeaIds, draggedIdeaId, dragHoverTargetId, setDraggedIdeaId, setDragHoverTargetId, edges, currentBrainDumpId, addEdge, deleteEdge, isCommandKeyPressed, hideShortcutAssistant]);
   
   const handleConnectionHandleMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -420,7 +421,7 @@ function IdeaNode({ idea }: IdeaNodeProps) {
     : isDraggedOver ? '3px solid #10b981'
     : isParent ? '2px solid #d97706' 
     : isGenerating ? '3px solid transparent' // Transparent to show gradient behind
-    : isDark ? '2px solid rgba(255, 255, 255, 0.2)' : '2px solid rgba(156, 163, 175, 0.5)';
+    : '2px solid rgba(156, 163, 175, 0.5)';
   
   const glowShadow = glowOpacity > 0
     ? `0 0 0 4px rgba(59, 130, 246, ${0.18 * glowOpacity}), 0 0 20px rgba(59, 130, 246, ${0.45 * glowOpacity})`
@@ -436,15 +437,19 @@ function IdeaNode({ idea }: IdeaNodeProps) {
     : undefined;
   const combinedShadow = [selectionShadow, dragOverShadow, parentShadow, glowShadow].filter(Boolean).join(', ') || undefined;
   
+  // Ensure both parent and child nodes have similar backgrounds for consistency
+  const isDarkMode = theme === 'dark';
+  const baseBackground = isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.7)';
+  
   const backgroundStyle = isSelected
     ? 'rgba(59, 130, 246, 0.05)'
     : isDraggedOver
       ? 'rgba(16, 185, 129, 0.05)'
       : isParent && !isSelected && !isDraggedOver
-        ? 'rgba(217, 119, 6, 0.03)'
+        ? (isDarkMode ? 'rgba(217, 119, 6, 0.05)' : 'rgba(217, 119, 6, 0.05)')
         : glowOpacity > 0
           ? `rgba(59, 130, 246, ${0.08 * glowOpacity})`
-          : undefined;
+          : baseBackground;
 
   // URL attachments for text ideas
   const [urlAttachments, setUrlAttachments] = useState<Array<{ id: string; url: string; title?: string; thumbnailUrl?: string }>>([]);
@@ -517,7 +522,7 @@ function IdeaNode({ idea }: IdeaNodeProps) {
         style={{
           border: baseBorder,
           boxShadow: combinedShadow,
-          background: backgroundStyle || (isDark ? 'rgba(31, 41, 55, 0.8)' : 'rgba(255, 255, 255, 0.9)'),
+          background: backgroundStyle,
           transition: 'box-shadow 120ms linear, background-color 120ms linear, border-color 120ms linear',
         }}
       >
@@ -602,7 +607,8 @@ function IdeaNode({ idea }: IdeaNodeProps) {
               display: '-webkit-box',
               WebkitBoxOrient: 'vertical',
               WebkitLineClamp: 2,
-              maxHeight: '2.5rem'
+              maxHeight: '2.5rem',
+              color: textColor
             }}>
               {idea.text.length > 100 ? idea.text.substring(0, 100) + '...' : idea.text}
             </p>
@@ -612,17 +618,3 @@ function IdeaNode({ idea }: IdeaNodeProps) {
     </div>
   );
 }
-
-export default memo(IdeaNode, (prevProps, nextProps) => {
-  // Only re-render if the idea object has actually changed
-  return (
-    prevProps.idea.id === nextProps.idea.id &&
-    prevProps.idea.text === nextProps.idea.text &&
-    prevProps.idea.position_x === nextProps.idea.position_x &&
-    prevProps.idea.position_y === nextProps.idea.position_y &&
-    prevProps.idea.width === nextProps.idea.width &&
-    prevProps.idea.height === nextProps.idea.height &&
-    prevProps.idea.created_at === nextProps.idea.created_at &&
-    prevProps.idea.updated_at === nextProps.idea.updated_at
-  );
-});

@@ -1,11 +1,245 @@
 'use client'
 
-import { useMemo, useState } from 'react';
-import { HelpCircle, Edit2 } from 'lucide-react';
+import { useMemo, useState, useEffect } from 'react';
+import { HelpCircle, Edit2, SlidersHorizontal, ZoomIn, ZoomOut, Maximize2, Grid3x3, Moon, Sun, Trash2, Undo2, Redo2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Toolbar from '@/components/Toolbar';
-import { KeyboardShortcutsButton } from '@/components/ControlPanel';
-import { useStore } from '@/store';
+import { useStore, undo, redo, canUndo, canRedo, startBatch, endBatch } from '@/store';
+import { saveUserPreferencesManually } from '@/hooks/useUserPreferences';
+
+function ControlPanelButton() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [canUndoState, setCanUndoState] = useState(false);
+  const [canRedoState, setCanRedoState] = useState(false);
+
+  // Store selectors
+  const viewport = useStore(state => state.viewport);
+  const updateViewport = useStore(state => state.updateViewport);
+  const isGridVisible = useStore(state => state.isGridVisible);
+  const patternType = useStore(state => state.patternType);
+  const toggleGrid = useStore(state => state.toggleGrid);
+  const theme = useStore(state => state.theme);
+  const toggleTheme = useStore(state => state.toggleTheme);
+  const openModal = useStore(state => state.openModal);
+
+  // Get Sets from store
+  const selectedIdeaIdsSet = useStore(state => state.selectedIdeaIds);
+  const selectedEdgeIdsSet = useStore(state => state.selectedEdgeIds);
+  const deleteIdea = useStore(state => state.deleteIdea);
+  const deleteEdge = useStore(state => state.deleteEdge);
+  const clearSelection = useStore(state => state.clearSelection);
+  const ideas = useStore(state => state.ideas);
+  const edges = useStore(state => state.edges);
+
+  // Convert Sets to arrays
+  const selectedIdeaIds = Array.from(selectedIdeaIdsSet);
+  const selectedEdgeIds = Array.from(selectedEdgeIdsSet);
+  const hasSelection = selectedIdeaIds.length > 0 || selectedEdgeIds.length > 0;
+
+  const zoomPercent = useMemo(
+    () => Math.round(viewport.zoom * 100),
+    [viewport.zoom]
+  );
+
+  const isDarkTheme = theme === 'dark';
+
+  // Update undo/redo states when ideas/edges change
+  useEffect(() => {
+    setCanUndoState(canUndo());
+    setCanRedoState(canRedo());
+  }, [ideas, edges]);
+
+  const handleZoomIn = () => {
+    const newZoom = Math.min(3, viewport.zoom + 0.1);
+    updateViewport({ ...viewport, zoom: newZoom });
+  };
+
+  const handleZoomOut = () => {
+    const newZoom = Math.max(0.1, viewport.zoom - 0.1);
+    updateViewport({ ...viewport, zoom: newZoom });
+  };
+
+  const handleResetView = () => {
+    updateViewport({ x: 0, y: 0, zoom: 1 });
+  };
+
+  const handleToggleTheme = async () => {
+    toggleTheme();
+    setIsOpen(false);
+    // Save theme preference to database
+    try {
+      await saveUserPreferencesManually();
+    } catch (error) {
+      console.error('Failed to save theme preference:', error);
+    }
+  };
+
+  const handleToggleGrid = async () => {
+    toggleGrid();
+    setIsOpen(false);
+    // Save grid preference to database
+    try {
+      await saveUserPreferencesManually();
+    } catch (error) {
+      console.error('Failed to save grid preference:', error);
+    }
+  };
+
+  const handleUndo = async () => {
+    if (!canUndo()) return;
+    await undo();
+    setCanUndoState(canUndo());
+    setCanRedoState(canRedo());
+  };
+
+  const handleRedo = async () => {
+    if (!canRedo()) return;
+    await redo();
+    setCanUndoState(canUndo());
+    setCanRedoState(canRedo());
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!hasSelection) return;
+    startBatch();
+    try {
+      await Promise.all([
+        ...selectedIdeaIds.map(id => deleteIdea(id)),
+        ...selectedEdgeIds.map(id => deleteEdge(id)),
+      ]);
+      clearSelection();
+    } finally {
+      endBatch();
+    }
+    setIsOpen(false);
+  };
+
+  const handleOpenShortcuts = () => {
+    openModal('shortcuts');
+    setIsOpen(false);
+  };
+
+  return (
+    <>
+      {/* Control Panel Button - Only visible on mobile */}
+      <button
+        onClick={() => setIsOpen(true)}
+        className="liquid-glass rounded-2xl shadow-2xl p-2 hover:bg-current/10 transition-colors md:hidden"
+        title="Control Panel"
+      >
+        <SlidersHorizontal className="w-5 h-5" />
+      </button>
+
+      {/* Control Panel Modal */}
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Canvas Controls</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Undo/Redo */}
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleUndo}
+                disabled={!canUndoState}
+                className="flex-1"
+              >
+                <Undo2 className="w-4 h-4 mr-2" />
+                Undo
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleRedo}
+                disabled={!canRedoState}
+                className="flex-1"
+              >
+                <Redo2 className="w-4 h-4 mr-2" />
+                Redo
+              </Button>
+            </div>
+
+            {/* Zoom Controls */}
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Zoom</div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={handleZoomOut}>
+                  <ZoomOut className="w-4 h-4" />
+                </Button>
+                <span className="flex-1 text-center text-sm">{zoomPercent}%</span>
+                <Button size="sm" variant="outline" onClick={handleZoomIn}>
+                  <ZoomIn className="w-4 h-4" />
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleResetView}>
+                  <Maximize2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Grid Toggle */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleToggleGrid}
+              className="w-full justify-start"
+            >
+              <Grid3x3 className="w-4 h-4 mr-2" />
+              {
+                patternType === 'none' ? 'Show Grid Dots' :
+                patternType === 'dots' ? 'Show Grid Lines' :
+                'Hide Grid'
+              }
+            </Button>
+
+            {/* Theme Toggle */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleToggleTheme}
+              className="w-full justify-start"
+            >
+              {isDarkTheme ? (
+                <Sun className="w-4 h-4 mr-2" />
+              ) : (
+                <Moon className="w-4 h-4 mr-2" />
+              )}
+              {isDarkTheme ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+            </Button>
+
+            {/* Keyboard Shortcuts */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleOpenShortcuts}
+              className="w-full justify-start"
+            >
+              <div className="text-purple-500 mr-2">⌨️</div>
+              Keyboard Shortcuts
+            </Button>
+
+            {/* Delete Selected */}
+            {hasSelection && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleDeleteSelected}
+                className="w-full justify-start text-red-500 hover:text-red-600"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Selected ({selectedIdeaIds.length + selectedEdgeIds.length})
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 export default function CanvasHeader() {
   // Use stable selectors to avoid infinite loops
@@ -14,17 +248,15 @@ export default function CanvasHeader() {
   const currentBrainDump = useMemo(() => {
     return brainDumps.find(bd => bd.id === currentBrainDumpId) || null;
   }, [brainDumps, currentBrainDumpId]);
-  
+
   const updateBrainDumpName = useStore(state => state.updateBrainDumpName);
   const ideas = useStore(state => state.ideas);
   const edges = useStore(state => state.edges);
   const openModal = useStore(state => state.openModal);
-  
+
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
-  
-  if (!currentBrainDump) return null;
-  
+
   const ideaCount = useMemo(() => {
     if (!currentBrainDumpId) return 0;
     const ideasArray = Array.isArray(ideas) ? ideas : Object.values(ideas || {});
@@ -36,6 +268,8 @@ export default function CanvasHeader() {
     const edgesArray = Array.isArray(edges) ? edges : Object.values(edges || {});
     return edgesArray.filter((edge: any) => edge.brain_dump_id === currentBrainDumpId).length;
   }, [edges, currentBrainDumpId]);
+
+  if (!currentBrainDump) return null;
   
   const handleStartEdit = () => {
     setIsEditing(true);
@@ -98,7 +332,8 @@ export default function CanvasHeader() {
         <div className="flex flex-wrap items-center justify-end gap-3">
           <Toolbar />
 
-          <KeyboardShortcutsButton />
+          {/* Control Panel Button - Mobile Only */}
+          <ControlPanelButton />
 
           <button
             onClick={() => openModal('help')}

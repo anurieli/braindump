@@ -13,7 +13,6 @@ import SettingsModal from '@/components/SettingsModal'
 import ShortcutsPanel from '@/components/ShortcutsPanel'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { useGlobalKeyboardShortcuts } from '@/hooks/useGlobalKeyboardShortcuts'
-import { useUserPreferences } from '@/hooks/useUserPreferences'
 
 export default function Home() {
   const router = useRouter()
@@ -32,9 +31,6 @@ export default function Home() {
   // Initialize global keyboard shortcuts
   useGlobalKeyboardShortcuts()
   
-  // Initialize user preferences loading (load-only, no auto-save)
-  useUserPreferences()
-
   useEffect(() => {
     const initializeApp = async () => {
       try {
@@ -53,6 +49,12 @@ export default function Home() {
         await loadEdgeTypes()
 
         setIsLoading(false)
+        
+        // Load user preferences after main app is ready (non-blocking)
+        const { loadUserPreferences } = useStore.getState()
+        loadUserPreferences(user.id).catch(error => {
+          console.error('Failed to load user preferences:', error)
+        })
       } catch (error) {
         console.error('Failed to initialize app:', error)
         router.push('/login')

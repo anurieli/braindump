@@ -42,6 +42,15 @@ export interface UiSlice {
     text: string
   } | null
 
+  // Shortcut assistant state
+  shortcutAssistant: {
+    isVisible: boolean
+    message: string
+  } | null
+  
+  // Command key state
+  isCommandKeyPressed: boolean
+
   // Performance settings
   enableAnimations: boolean
   renderQuality: 'low' | 'medium' | 'high'
@@ -94,6 +103,13 @@ export interface UiSlice {
   // Keyboard shortcuts
   setShortcutPressed: (key: string, pressed: boolean) => void
   
+  // Shortcut assistant actions
+  showShortcutAssistant: (message: string) => void
+  hideShortcutAssistant: () => void
+  
+  // Command key actions
+  setCommandKeyPressed: (pressed: boolean) => void
+  
   // Performance
   setRenderQuality: (quality: 'low' | 'medium' | 'high') => void
   toggleAnimations: () => void
@@ -140,6 +156,12 @@ export const createUiSlice: StateCreator<
 
   // Quick editor state
   quickEditor: null,
+
+  // Shortcut assistant state
+  shortcutAssistant: null,
+  
+  // Command key state
+  isCommandKeyPressed: false,
 
   // Performance settings
   enableAnimations: true,
@@ -373,6 +395,25 @@ export const createUiSlice: StateCreator<
         [key]: pressed
       }
     }))
+  },
+
+  // Shortcut assistant actions
+  showShortcutAssistant: (message: string) => {
+    set({
+      shortcutAssistant: {
+        isVisible: true,
+        message
+      }
+    })
+  },
+
+  hideShortcutAssistant: () => {
+    set({ shortcutAssistant: null })
+  },
+
+  // Command key actions
+  setCommandKeyPressed: (pressed: boolean) => {
+    set({ isCommandKeyPressed: pressed })
   },
 
   // Performance

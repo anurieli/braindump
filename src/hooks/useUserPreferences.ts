@@ -23,8 +23,12 @@ export function useUserPreferences() {
         if (mounted && user && !hasLoadedRef.current) {
           console.log('Loading user preferences for:', user.id)
           userIdRef.current = user.id
-          await loadUserPreferences(user.id)
           hasLoadedRef.current = true
+          // Load preferences in background without blocking
+          loadUserPreferences(user.id).catch(error => {
+            console.error('Background preference load failed:', error)
+            hasLoadedRef.current = false // Reset to allow retry
+          })
         }
       } catch (error) {
         console.error('Failed to initialize user preferences:', error)
@@ -37,14 +41,14 @@ export function useUserPreferences() {
       if (!mounted) return
       
       if (event === 'SIGNED_IN' && session?.user && !hasLoadedRef.current) {
-        try {
-          console.log('Loading preferences on sign in for:', session.user.id)
-          userIdRef.current = session.user.id
-          await loadUserPreferences(session.user.id)
-          hasLoadedRef.current = true
-        } catch (error) {
+        console.log('Loading preferences on sign in for:', session.user.id)
+        userIdRef.current = session.user.id
+        hasLoadedRef.current = true
+        // Load preferences in background without blocking
+        loadUserPreferences(session.user.id).catch(error => {
           console.error('Failed to load preferences on sign in:', error)
-        }
+          hasLoadedRef.current = false // Reset to allow retry
+        })
       } else if (event === 'SIGNED_OUT') {
         console.log('User signed out, clearing preference state')
         hasLoadedRef.current = false

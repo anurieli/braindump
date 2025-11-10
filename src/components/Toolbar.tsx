@@ -11,21 +11,8 @@ import {
   Trash2,
   Undo2,
   Redo2,
-  SlidersHorizontal,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import {
   useStore,
@@ -257,6 +244,19 @@ export default function Toolbar({ className }: ToolbarProps) {
           )}
         </Button>
 
+        {/* Keyboard Shortcuts */}
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => useStore.getState().openModal('shortcuts')}
+          title="Keyboard Shortcuts"
+          className="h-8 w-8"
+        >
+          <div className="text-purple-500 text-lg leading-none">
+            ⌨️
+          </div>
+        </Button>
+
         {/* Delete Selected */}
         {hasSelection && (
           <Button
@@ -270,128 +270,6 @@ export default function Toolbar({ className }: ToolbarProps) {
           </Button>
         )}
       </div>
-
-      {/* Mobile Controls */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            size="icon"
-            variant="ghost"
-            title="Canvas Controls"
-            className="liquid-glass h-10 w-10 rounded-2xl shadow-2xl md:hidden"
-          >
-            <SlidersHorizontal className="h-5 w-5" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-60">
-          <DropdownMenuLabel>Canvas Controls</DropdownMenuLabel>
-          <DropdownMenuGroup>
-            <DropdownMenuItem
-              disabled={!canUndoState}
-              onSelect={event => {
-                event.preventDefault();
-                handleUndo();
-              }}
-            >
-              <Undo2 className="mr-2 h-4 w-4" />
-              Undo
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={!canRedoState}
-              onSelect={event => {
-                event.preventDefault();
-                handleRedo();
-              }}
-            >
-              <Redo2 className="mr-2 h-4 w-4" />
-              Redo
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-
-          <DropdownMenuSeparator />
-
-          <DropdownMenuGroup>
-            <DropdownMenuItem
-              onSelect={event => {
-                event.preventDefault();
-                handleZoomIn();
-              }}
-            >
-              <ZoomIn className="mr-2 h-4 w-4" />
-              Zoom In
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={event => {
-                event.preventDefault();
-                handleZoomOut();
-              }}
-            >
-              <ZoomOut className="mr-2 h-4 w-4" />
-              Zoom Out
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={event => {
-                event.preventDefault();
-                handleResetView();
-              }}
-            >
-              <Maximize2 className="mr-2 h-4 w-4" />
-              Reset View
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-
-          <DropdownMenuSeparator />
-
-          <DropdownMenuItem
-            onSelect={async event => {
-              event.preventDefault();
-              toggleGrid();
-              // Save grid preference to database
-              try {
-                await saveUserPreferencesManually();
-              } catch (error) {
-                console.error('Failed to save grid preference:', error);
-              }
-            }}
-          >
-            <Grid3x3 className="mr-2 h-4 w-4" />
-            {
-              patternType === 'none' ? 'Show Grid Dots' :
-              patternType === 'dots' ? 'Show Grid Lines' :
-              'Hide Grid'
-            }
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-
-          <DropdownMenuItem
-            onSelect={event => {
-              event.preventDefault();
-              handleToggleTheme();
-            }}
-          >
-            {isDarkTheme ? (
-              <Sun className="mr-2 h-4 w-4" />
-            ) : (
-              <Moon className="mr-2 h-4 w-4" />
-            )}
-            {isDarkTheme ? 'Switch to Light' : 'Switch to Dark'}
-          </DropdownMenuItem>
-
-          {hasSelection && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={() => {
-                  void handleDeleteSelected();
-                }}
-              >
-                <Trash2 className="mr-2 h-4 w-4 text-red-500" />
-                Delete Selected
-              </DropdownMenuItem>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
     </div>
   );
 }
