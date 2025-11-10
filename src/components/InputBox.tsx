@@ -520,10 +520,10 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
               Attach URLs, images, and supporting context.
             </p>
             <div className="flex items-center gap-2 text-sm">
-              <span style={{ color: inputValue.length > 50 ? textColors.secondary : textColors.tertiary }}>
-                {inputValue.length} / 50
+              <span style={{ color: inputValue.length > 60 ? textColors.secondary : textColors.tertiary }}>
+                {inputValue.length} / 60
               </span>
-              {inputValue.length > 50 && (
+              {inputValue.length > 60 && (
                 <span className="text-xs" style={{ color: textColors.secondary }}>
                   • Idea will be summarized with AI
                 </span>

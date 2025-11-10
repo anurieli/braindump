@@ -97,25 +97,26 @@ export default function QuickIdeaInput() {
     try {
       // Determine position - use pending connection target position if available
       let targetPos = { x: quickEditor.position.x, y: quickEditor.position.y }
-      
+
       if (quickEditor.pendingConnection) {
         // Use the target position from the pending connection
         targetPos = quickEditor.pendingConnection.targetPosition
       } else {
-        // Convert screen coordinates to canvas coordinates for regular quick ideas
+        // Position the idea exactly where the QuickIdeaInput box appears
+        // The box is positioned at quickEditor.position.x - 100, quickEditor.position.y - 25 (screen coordinates)
         targetPos = screenToCanvas(
-          quickEditor.position.x,
-          quickEditor.position.y,
+          quickEditor.position.x - 100, // Left edge of the QuickIdeaInput box
+          quickEditor.position.y - 25,  // Top edge of the QuickIdeaInput box
           viewport.x,
           viewport.y,
           viewport.zoom
         )
       }
 
-      // Create idea at target position
-      const newIdeaId = await addIdea(quickEditor.text.trim(), { 
-        x: targetPos.x - 100, // Center the idea (assuming 200px width)
-        y: targetPos.y - 50   // Center the idea (assuming 100px height)
+      // Create idea at target position (no additional offset needed)
+      const newIdeaId = await addIdea(quickEditor.text.trim(), {
+        x: targetPos.x,
+        y: targetPos.y
       })
 
       // If there's a pending connection, create the edge

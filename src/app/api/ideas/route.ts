@@ -186,8 +186,8 @@ export async function POST(request: NextRequest) {
     // Trigger background AI processing
     const trimmedText = text.trim()
     
-    // Queue summarization if text is long enough (> 50 chars or > 2 lines)
-    if (trimmedText.length > 50 || trimmedText.split('\n').length > 2) {
+    // Queue summarization if text is long enough (> 60 chars or > 2 lines)
+    if (trimmedText.length > 60 || trimmedText.split('\n').length > 2) {
       await backgroundJobQueue.addJob('summarization', {
         ideaId: data.id,
         text: trimmedText
@@ -278,7 +278,7 @@ export async function POST(request: NextRequest) {
       data: data,
       message: 'Idea created successfully',
       background_jobs: {
-        summarization: trimmedText.length > 50 || trimmedText.split('\n').length > 2,
+        summarization: trimmedText.length > 60 || trimmedText.split('\n').length > 2,
         embedding: true
       }
     }, { status: 201 })

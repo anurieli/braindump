@@ -78,8 +78,8 @@ export const createIdeasSlice: StateCreator<
       }
 
       // Determine state based on text length
-      // Short text (< 50 chars) goes directly to 'ready', longer text needs AI processing
-      const needsAI = text.length >= 50
+      // Short text (< 60 chars) goes directly to 'ready', longer text needs AI processing
+      const needsAI = text.length >= 60
       const initialState = needsAI ? 'generating' : 'ready'
 
       // Insert into database with correct initial state
@@ -357,7 +357,7 @@ export const createIdeasSlice: StateCreator<
       const updates: Partial<Idea> = {}
 
       // Generate summary if text is long enough
-      if (idea.text && idea.text.length > 50) {
+      if (idea.text && idea.text.length > 60) {
         const summary = await generateSummary(idea.text)
         updates.summary = summary
       }
