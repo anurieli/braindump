@@ -101,6 +101,17 @@ export interface AttachmentMetadata {
   thumbnailUrl?: string;
   previewUrl?: string;
   isBase64?: boolean;
+  textContent?: string; // For text file previews
+  userPreferences?: {
+    width?: number;
+    height?: number;
+  };
+  linkPreview?: {
+    title: string;
+    description: string;
+    image?: string;
+    favicon?: string;
+  };
   [key: string]: unknown;
 }
 

@@ -2,6 +2,7 @@
 
 import { useHotkeys } from 'react-hotkeys-hook'
 import { useStore, useStoreActions } from '@/store'
+import { debugKeyboard } from '@/lib/undo-debug'
 
 export function useGlobalKeyboardShortcuts() {
   const createBrainDump = useStore(state => state.createBrainDump)
@@ -12,6 +13,10 @@ export function useGlobalKeyboardShortcuts() {
   const cancelConnection = useStore(state => state.cancelConnection)
   const isCreatingConnection = useStore(state => state.isCreatingConnection)
   const selectIdea = useStore(state => state.selectIdea)
+  const selectedIdeaIds = useStore(state => state.selectedIdeaIds)
+
+  // Store actions
+  const { duplicateSelectedNodes } = useStoreActions()
 
   // Undo/Redo actions
   const { undo, redo, canUndo, canRedo } = useStoreActions()
@@ -25,15 +30,26 @@ export function useGlobalKeyboardShortcuts() {
     description: 'Create new brain dump'
   })
 
-  // Ctrl+D: Duplicate current brain dump
+  // Ctrl+D: Duplicate current brain dump (only when no nodes selected)
   useHotkeys('ctrl+d', (event) => {
     event.preventDefault()
-    if (currentBrainDumpId) {
+    if (selectedIdeaIds.size === 0 && currentBrainDumpId) {
       duplicateBrainDump(currentBrainDumpId)
     }
   }, {
     enableOnFormTags: false,
-    description: 'Duplicate current brain dump'
+    description: 'Duplicate current brain dump (when no nodes selected)'
+  })
+
+  // Cmd+D: Duplicate selected nodes and edges
+  useHotkeys('meta+d', (event) => {
+    event.preventDefault()
+    if (selectedIdeaIds.size > 0) {
+      duplicateSelectedNodes()
+    }
+  }, {
+    enableOnFormTags: false,
+    description: 'Duplicate selected nodes and edges'
   })
 
   // Ctrl+/: Toggle side panel
@@ -47,14 +63,10 @@ export function useGlobalKeyboardShortcuts() {
 
   // Ctrl+Z: Undo
   useHotkeys('ctrl+z', async (event) => {
-    console.log('🎹 Ctrl+Z pressed, canUndo:', canUndo())
+    debugKeyboard('Ctrl+Z', 'Undo', canUndo())
     event.preventDefault()
     if (canUndo()) {
-      console.log('🔄 Calling undo...')
       await undo()
-      console.log('✅ Undo completed')
-    } else {
-      console.log('❌ Cannot undo - no history')
     }
   }, {
     enableOnFormTags: true, // Allow undo in input fields
@@ -63,14 +75,10 @@ export function useGlobalKeyboardShortcuts() {
 
   // Ctrl+Shift+Z: Redo
   useHotkeys('ctrl+shift+z', async (event) => {
-    console.log('🎹 Ctrl+Shift+Z pressed, canRedo:', canRedo())
+    debugKeyboard('Ctrl+Shift+Z', 'Redo', canRedo())
     event.preventDefault()
     if (canRedo()) {
-      console.log('🔄 Calling redo...')
       await redo()
-      console.log('✅ Redo completed')
-    } else {
-      console.log('❌ Cannot redo - no future history')
     }
   }, {
     enableOnFormTags: true, // Allow redo in input fields

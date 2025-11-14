@@ -35,6 +35,7 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
   const addTouchedNodeInConnection = useStore(state => state.addTouchedNodeInConnection);
   const addEdge = useStore(state => state.addEdge);
   const updateIdeaDimensions = useStore(state => state.updateIdeaDimensions);
+  const updateAttachmentMetadata = useStore(state => state.updateAttachmentMetadata);
   const deleteEdge = useStore(state => state.deleteEdge);
   
   const [isDragging, setIsDragging] = useState(false);
@@ -155,12 +156,22 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
   const fileType = currentAttachment?.type || 'file';
   const filename = currentAttachment?.filename || idea.text;
   const mimeType = metadata.mimeType;
-  const fileCategory = mimeType ? getFileTypeCategory(mimeType) : 'unknown';
+  const fileCategory = mimeType ? getFileTypeCategory(mimeType, filename, fileType) : (fileType === 'url' ? 'url' : 'unknown');
 
   const hasAspectRatio = Number.isFinite(aspectRatio) && aspectRatio > 0;
   const canResize = fileCategory === 'image' && hasAspectRatio;
-  const computedWidth = idea.width ?? clampWidthForAspect(typeof metadata.width === 'number' ? metadata.width : 320, hasAspectRatio ? aspectRatio : 1);
-  const fallbackHeight = hasAspectRatio ? computedWidth / aspectRatio : (typeof metadata.height === 'number' ? metadata.height : computedWidth);
+  
+  // Use user preferences for sizing if available, otherwise fall back to defaults
+  const preferredWidth = metadata.userPreferences?.width;
+  const preferredHeight = metadata.userPreferences?.height;
+  
+  const computedWidth = idea.width ?? 
+    preferredWidth ?? 
+    clampWidthForAspect(typeof metadata.width === 'number' ? metadata.width : 320, hasAspectRatio ? aspectRatio : 1);
+  
+  const fallbackHeight = hasAspectRatio ? computedWidth / aspectRatio : 
+    (preferredHeight ?? (typeof metadata.height === 'number' ? metadata.height : computedWidth));
+  
   const baseHeight = idea.height ?? fallbackHeight;
   const width = Math.max(MIN_DIMENSION, Math.min(MAX_DIMENSION, computedWidth));
   const height = canResize && aspectRatio > 0 ? width / aspectRatio : Math.max(MIN_DIMENSION, Math.min(MAX_DIMENSION, baseHeight));
@@ -478,6 +489,21 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
     const handleResizeUp = () => {
       setIsResizing(false);
       setHoveredCorner(null);
+      
+      // Save user preferences for this attachment size
+      if (idea.type === 'attachment') {
+        const currentWidth = idea.width;
+        const currentHeight = idea.height;
+        
+        if (currentWidth && currentHeight) {
+          updateAttachmentMetadata(idea.id, {
+            userPreferences: {
+              width: currentWidth,
+              height: currentHeight
+            }
+          });
+        }
+      }
     };
 
     document.addEventListener('mousemove', handleResizeMove);
@@ -487,7 +513,7 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
       document.removeEventListener('mousemove', handleResizeMove);
       document.removeEventListener('mouseup', handleResizeUp);
     };
-  }, [isResizing, viewport.zoom, clampWidthForAspect, aspectRatio, idea.id, updateIdeaDimensions, updateIdeaPosition, canResize]);
+  }, [isResizing, viewport.zoom, clampWidthForAspect, aspectRatio, idea.id, updateIdeaDimensions, updateIdeaPosition, canResize, updateAttachmentMetadata]);
 
   // Render file preview based on type
   const renderFilePreview = () => {
@@ -536,11 +562,152 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
       );
     }
 
-    // File type icons for non-images
+    // Text file content preview
+    if (fileCategory === 'text' && metadata.textContent) {
+      return (
+        <div className="w-full h-full p-3 bg-gray-50 rounded-md overflow-hidden">
+          <div className="h-full flex flex-col">
+            {/* File type indicator */}
+            <div className="flex items-center gap-2 mb-2 flex-shrink-0">
+              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+              <span className="text-xs text-gray-600 truncate font-medium">
+                {filename?.split('.').pop()?.toUpperCase() || 'TEXT'}
+              </span>
+            </div>
+            
+            {/* Text content */}
+            <div className="flex-1 overflow-hidden">
+              <pre className="text-xs text-gray-800 whitespace-pre-wrap break-words leading-relaxed font-mono">
+                {metadata.textContent}
+              </pre>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // PDF thumbnail preview
+    if (fileCategory === 'pdf' && metadata.thumbnailUrl) {
+      return (
+        <div className="w-full h-full bg-gray-50 rounded-md overflow-hidden">
+          <div className="relative w-full h-full">
+            {/* PDF thumbnail */}
+            <div className="absolute inset-0">
+              <img
+                src={metadata.thumbnailUrl}
+                alt={`PDF: ${filename}`}
+                draggable={false}
+                className="w-full h-full object-contain"
+                onError={() => {
+                  // If thumbnail fails to load, fall back to icon
+                  console.warn('PDF thumbnail failed to load')
+                }}
+                onDragStart={(e) => e.preventDefault()}
+              />
+            </div>
+            
+            {/* PDF indicator overlay */}
+            <div className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded shadow-lg font-medium">
+              PDF
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Web link preview
+    if (fileCategory === 'url' && metadata.linkPreview) {
+      const linkPreview = metadata.linkPreview;
+      const hasImage = linkPreview.image && linkPreview.image.trim() !== '';
+
+      return (
+        <div 
+          className="w-full h-full bg-white rounded-md overflow-hidden border-2 border-gray-200 hover:border-blue-400 transition-colors cursor-pointer"
+          onClick={(e) => {
+            e.stopPropagation();
+            window.open(currentAttachment?.url || '', '_blank');
+          }}
+        >
+          <div className="relative w-full h-full flex flex-col">
+            {/* Website image if available */}
+            {hasImage && (
+              <div className="flex-shrink-0 h-2/3 bg-gray-100">
+                <img
+                  src={linkPreview.image}
+                  alt={linkPreview.title}
+                  draggable={false}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    // Hide image container if it fails to load
+                    const imgElement = e.target as HTMLImageElement;
+                    const container = imgElement.parentElement;
+                    if (container) {
+                      container.style.display = 'none';
+                    }
+                  }}
+                  onDragStart={(e) => e.preventDefault()}
+                />
+              </div>
+            )}
+            
+            {/* Content area */}
+            <div className={`flex-1 p-2 flex flex-col ${hasImage ? 'h-1/3' : 'h-full'}`}>
+              {/* Header with favicon and title */}
+              <div className="flex items-start gap-2 mb-1">
+                {linkPreview.favicon && (
+                  <img
+                    src={linkPreview.favicon}
+                    alt=""
+                    className="w-4 h-4 flex-shrink-0 mt-0.5"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                )}
+                <h3 className="text-xs font-semibold text-gray-900 line-clamp-2 leading-tight">
+                  {linkPreview.title || 'Untitled'}
+                </h3>
+              </div>
+              
+              {/* Description */}
+              {linkPreview.description && (
+                <p className="text-xs text-gray-600 line-clamp-2 leading-tight">
+                  {linkPreview.description}
+                </p>
+              )}
+              
+              {/* URL indicator */}
+              <div className="mt-auto pt-1">
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <span className="text-xs text-gray-500 truncate">
+                    {(() => {
+                      try {
+                        return new URL(currentAttachment?.url || '').hostname;
+                      } catch {
+                        return currentAttachment?.url || 'URL';
+                      }
+                    })()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // File type icons for files without content preview
     const getFileIcon = () => {
       const baseClass = 'h-12 w-12';
       if (fileCategory === 'pdf') {
         return <FileIcon className={`${baseClass} text-red-500`} />;
+      }
+      if (fileCategory === 'text') {
+        return <FileIcon className={`${baseClass} text-green-500`} />;
+      }
+      if (fileCategory === 'url') {
+        return <FileIcon className={`${baseClass} text-blue-500`} />;
       }
       if (fileCategory === 'document') {
         return <FileIcon className={`${baseClass} text-blue-500`} />;

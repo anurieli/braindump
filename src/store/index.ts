@@ -4,6 +4,7 @@ import { BrainDumpsSlice, createBrainDumpsSlice } from './slices/brainDumpsSlice
 import { IdeasSlice, createIdeasSlice } from './slices/ideasSlice'
 import { EdgesSlice, createEdgesSlice } from './slices/edgesSlice'
 import { UiSlice, createUiSlice } from './slices/uiSlice'
+import { undoDebugger, debugHistory, debugError } from '@/lib/undo-debug'
 
 export type StoreState = BrainDumpsSlice & IdeasSlice & EdgesSlice & UiSlice
 
@@ -59,7 +60,7 @@ export const endBatch = () => {
 useStore.subscribe(
   (state) => ({ ideas: state.ideas, edges: state.edges }),
   (current) => {
-    console.log('👂 Subscription triggered - state changed')
+    undoDebugger.log('operation', '👂 Subscription triggered - state changed')
 
     // Skip if we're in a batch operation
     if (isBatchOperation) return
@@ -69,7 +70,7 @@ useStore.subscribe(
 
     // Only save if something actually changed
     if (ideasSnapshot !== lastIdeasSnapshot || edgesSnapshot !== lastEdgesSnapshot) {
-      console.log('📝 State actually changed, scheduling debounced save')
+      undoDebugger.log('state', '📝 State actually changed, scheduling debounced save')
       lastIdeasSnapshot = ideasSnapshot
       lastEdgesSnapshot = edgesSnapshot
 
@@ -80,17 +81,17 @@ useStore.subscribe(
       if (timeSinceLastImmediateSave > 200) {
         if (batchTimeout) clearTimeout(batchTimeout)
         batchTimeout = setTimeout(() => {
-          console.log('💾 Debounced save executing')
+          undoDebugger.log('state', '💾 Debounced save executing')
           undoRedoManager.saveState({
             ideas: JSON.parse(JSON.stringify(current.ideas)),
             edges: JSON.parse(JSON.stringify(current.edges))
           }, false)
         }, 150)
       } else {
-        console.log('⏰ Skipping debounced save - too soon after immediate save')
+        undoDebugger.log('warning', '⏰ Skipping debounced save - too soon after immediate save')
       }
     } else {
-      console.log('📝 State changed but no actual difference detected')
+      undoDebugger.log('operation', '📝 State changed but no actual difference detected')
     }
   },
   { equalityFn: (a, b) => {
@@ -112,13 +113,14 @@ class UndoRedoManager {
   public lastImmediateSave = 0
 
   saveState(state: HistoryState, isImmediate = false) {
-    console.log('💾 Saving state to history:', {
-      ideasCount: Object.keys(state.ideas).length,
-      edgesCount: Object.keys(state.edges).length,
-      currentIndex: this.currentIndex,
-      historyLength: this.history.length,
-      isImmediate
-    })
+    // Validate state before saving
+    const validation = undoDebugger.validateState(state)
+    if (!validation.valid) {
+      undoDebugger.log('error', `❌ Invalid state detected, not saving to history`, { errors: validation.errors })
+      return
+    }
+
+    debugHistory('History Save', state, isImmediate)
 
     if (isImmediate) {
       this.lastImmediateSave = Date.now()
@@ -139,13 +141,24 @@ class UndoRedoManager {
       this.currentIndex--
     }
 
-    console.log('✅ State saved, new history length:', this.history.length, 'currentIndex:', this.currentIndex)
+    undoDebugger.log('success', `✅ State saved, new history length: ${this.history.length}, currentIndex: ${this.currentIndex}`)
   }
 
   undo(): HistoryState | null {
     if (this.currentIndex > 0) {
       this.currentIndex--
-      return this.history[this.currentIndex]
+      const state = this.history[this.currentIndex]
+
+      // Validate the restored state
+      const validation = undoDebugger.validateState(state)
+      if (!validation.valid) {
+        undoDebugger.log('error', `❌ Invalid state in undo history at index ${this.currentIndex}`, { errors: validation.errors })
+        // Move back to avoid staying in invalid state
+        this.currentIndex++
+        return null
+      }
+
+      return state
     }
     return null
   }
@@ -153,7 +166,18 @@ class UndoRedoManager {
   redo(): HistoryState | null {
     if (this.currentIndex < this.history.length - 1) {
       this.currentIndex++
-      return this.history[this.currentIndex]
+      const state = this.history[this.currentIndex]
+
+      // Validate the restored state
+      const validation = undoDebugger.validateState(state)
+      if (!validation.valid) {
+        undoDebugger.log('error', `❌ Invalid state in redo history at index ${this.currentIndex}`, { errors: validation.errors })
+        // Move back to avoid staying in invalid state
+        this.currentIndex--
+        return null
+      }
+
+      return state
     }
     return null
   }
@@ -170,6 +194,45 @@ class UndoRedoManager {
   canRedo(): boolean {
     return this.currentIndex < this.history.length - 1
   }
+
+  // Additional validation methods
+  validateHistoryIntegrity(): { valid: boolean, errors: string[] } {
+    const errors: string[] = []
+
+    // Check that all states in history are valid
+    for (let i = 0; i < this.history.length; i++) {
+      const state = this.history[i]
+      const validation = undoDebugger.validateState(state)
+      if (!validation.valid) {
+        errors.push(`History state at index ${i} is invalid: ${validation.errors.join(', ')}`)
+      }
+    }
+
+    // Check current index bounds
+    if (this.currentIndex < -1 || this.currentIndex >= this.history.length) {
+      errors.push(`Current index ${this.currentIndex} is out of bounds (history length: ${this.history.length})`)
+    }
+
+    return { valid: errors.length === 0, errors }
+  }
+
+  // Get detailed history information
+  getHistoryInfo(): any {
+    return {
+      length: this.history.length,
+      currentIndex: this.currentIndex,
+      canUndo: this.canUndo(),
+      canRedo: this.canRedo(),
+      maxHistory: this.maxHistory,
+      integrity: this.validateHistoryIntegrity(),
+      states: this.history.map((state, index) => ({
+        index,
+        ideasCount: Object.keys(state.ideas).length,
+        edgesCount: Object.keys(state.edges).length,
+        isCurrent: index === this.currentIndex
+      }))
+    }
+  }
 }
 
 export const undoRedoManager = new UndoRedoManager()
@@ -184,18 +247,18 @@ export const saveCurrentState = () => {
 }
 
 export const undo = async () => {
-  console.log('🔄 Undo called')
+  undoDebugger.log('operation', '🔄 Undo called')
   const currentState = useStore.getState()
-  console.log('📊 Current state:', {
+  undoDebugger.log('state', '📊 Current state before undo', null, {
     ideasCount: Object.keys(currentState.ideas).length,
     edgesCount: Object.keys(currentState.edges).length
   })
 
   const previousState = undoRedoManager.undo()
-  console.log('📋 Previous state from history:', previousState ? {
+  undoDebugger.log('state', '📋 Previous state from history', null, previousState ? {
     ideasCount: Object.keys(previousState.ideas).length,
     edgesCount: Object.keys(previousState.edges).length
-  } : 'null')
+  } : { state: 'null' })
 
   if (previousState) {
     // Find items that were deleted (exist in previous but not in current)
@@ -237,21 +300,27 @@ export const undo = async () => {
     
     // Then sync with database
     const { supabase } = await import('@/lib/supabase')
-    
+
     // Re-insert restored ideas FIRST (so edges can reference them)
     if (restoredIdeas.length > 0) {
       const ideasToInsert = restoredIdeas.map(id => previousState.ideas[id])
       console.log(`🔄 Restoring ${restoredIdeas.length} ideas:`, ideasToInsert.map(i => i.id))
-      
-      const { error, data } = await supabase
-        .from('ideas')
-        .upsert(ideasToInsert, { onConflict: 'id' })
-        .select()
-      
-      if (error) {
-        console.error('❌ Failed to restore ideas:', error)
-      } else {
-        console.log(`✅ Restored ${restoredIdeas.length} ideas:`, data)
+
+      try {
+        const { error, data } = await supabase
+          .from('ideas')
+          .upsert(ideasToInsert, { onConflict: 'id' })
+          .select()
+
+        if (error) {
+          console.error('❌ Failed to restore ideas:', error)
+          debugError('undo-ideas-restore', error, { restoredIdeas, ideasToInsert })
+        } else {
+          console.log(`✅ Restored ${restoredIdeas.length} ideas:`, data?.map(d => d.id))
+        }
+      } catch (error) {
+        console.error('❌ Exception restoring ideas:', error)
+        debugError('undo-ideas-restore-exception', error, { restoredIdeas })
       }
     }
     
@@ -303,18 +372,18 @@ export const undo = async () => {
 }
 
 export const redo = async () => {
-  console.log('🔄 Redo called')
+  undoDebugger.log('operation', '🔄 Redo called')
   const currentState = useStore.getState()
-  console.log('📊 Current state:', {
+  undoDebugger.log('state', '📊 Current state before redo', null, {
     ideasCount: Object.keys(currentState.ideas).length,
     edgesCount: Object.keys(currentState.edges).length
   })
 
   const nextState = undoRedoManager.redo()
-  console.log('📋 Next state from history:', nextState ? {
+  undoDebugger.log('state', '📋 Next state from history', null, nextState ? {
     ideasCount: Object.keys(nextState.ideas).length,
     edgesCount: Object.keys(nextState.edges).length
-  } : 'null')
+  } : { state: 'null' })
 
   if (nextState) {
     // Find items that were deleted (exist in current but not in next)
@@ -364,26 +433,46 @@ export const redo = async () => {
     
     // Delete items
     if (deletedIdeas.length > 0) {
-      const { error } = await supabase
-        .from('ideas')
-        .delete()
-        .in('id', deletedIdeas)
-      
-      if (error) {
-        console.error('Failed to delete ideas during redo:', error)
-      } else {
-        console.log(`✅ Deleted ${deletedIdeas.length} ideas`)
+      console.log(`🔄 Redo: Deleting ${deletedIdeas.length} ideas:`, deletedIdeas)
+
+      try {
+        const { error, data } = await supabase
+          .from('ideas')
+          .delete()
+          .in('id', deletedIdeas)
+          .select()
+
+        if (error) {
+          console.error('❌ Failed to delete ideas during redo:', error)
+          debugError('redo-ideas-delete', error, { deletedIdeas })
+        } else {
+          console.log(`✅ Redo: Deleted ${deletedIdeas.length} ideas:`, data?.map(d => d.id))
+        }
+      } catch (error) {
+        console.error('❌ Exception deleting ideas during redo:', error)
+        debugError('redo-ideas-delete-exception', error, { deletedIdeas })
       }
     }
     
     if (deletedEdges.length > 0) {
-      const { error } = await supabase
-        .from('edges')
-        .delete()
-        .in('id', deletedEdges)
-      
-      if (error) {
-        console.error('Failed to delete edges during redo:', error)
+      console.log(`🔄 Redo: Deleting ${deletedEdges.length} edges:`, deletedEdges)
+
+      try {
+        const { error, data } = await supabase
+          .from('edges')
+          .delete()
+          .in('id', deletedEdges)
+          .select()
+
+        if (error) {
+          console.error('❌ Failed to delete edges during redo:', error)
+          debugError('redo-edges-delete', error, { deletedEdges })
+        } else {
+          console.log(`✅ Redo: Deleted ${deletedEdges.length} edges:`, data?.map(d => d.id))
+        }
+      } catch (error) {
+        console.error('❌ Exception deleting edges during redo:', error)
+        debugError('redo-edges-delete-exception', error, { deletedEdges })
       }
     }
     
@@ -421,6 +510,15 @@ export const useIsIdeaSelected = (id: string): boolean => {
   return useStore(state => state.selectedIdeaIds.has(id))
 }
 
+// Global debugging functions
+if (typeof window !== 'undefined') {
+  (window as any).undoDebugInfo = {
+    historyInfo: () => undoRedoManager.getHistoryInfo(),
+    validateHistory: () => undoRedoManager.validateHistoryIntegrity(),
+    currentState: () => useStore.getState()
+  }
+}
+
 // Export store actions for easier access
 export const useStoreActions = () => {
   const store = useStore()
@@ -430,7 +528,7 @@ export const useStoreActions = () => {
     switchBrainDump: store.switchBrainDump,
     createBrainDump: store.createBrainDump,
     updateViewport: store.updateViewport,
-    
+
     // Ideas
     loadIdeas: store.loadIdeas,
     addIdea: store.addIdea,
@@ -438,27 +536,102 @@ export const useStoreActions = () => {
     updateIdeaPosition: store.updateIdeaPosition,
     deleteIdea: store.deleteIdea,
     selectIdea: store.selectIdea,
-    
+
     // Edges
     loadEdges: store.loadEdges,
     loadEdgeTypes: store.loadEdgeTypes,
     addEdge: store.addEdge,
     updateEdge: store.updateEdge,
     deleteEdge: store.deleteEdge,
-    
+
     // UI
     toggleTheme: store.toggleTheme,
     toggleGrid: store.toggleGrid,
     openModal: store.openModal,
     closeModal: store.closeModal,
-    
+
     // Auto-relate mode
     setAutoRelateMode: store.setAutoRelateMode,
     clearAutoRelateMode: store.clearAutoRelateMode,
-    
+
     // User preferences
     savePreferencesToDB: store.savePreferencesToDB,
-    
+
+    // Node duplication
+    duplicateSelectedNodes: async () => {
+      const state = useStore.getState()
+      const selectedIdeaIds = Array.from(state.selectedIdeaIds)
+      const selectedEdgeIds = Array.from(state.selectedEdgeIds)
+
+      if (selectedIdeaIds.length === 0) {
+        console.log('No nodes selected for duplication')
+        return
+      }
+
+      // Start batch operation
+      startBatch()
+
+      try {
+        // Create ID mapping for duplicated ideas
+        const idMapping: Record<string, string> = {}
+        const duplicatedIdeas: string[] = []
+        const duplicatedEdges: string[] = []
+
+        // Duplicate selected ideas with offset positions
+        for (const ideaId of selectedIdeaIds) {
+          const originalIdea = state.ideas[ideaId]
+          if (!originalIdea) continue
+
+          const offset = 20 // Offset duplicated nodes by 20px
+          const newPosition = {
+            x: originalIdea.position_x + offset,
+            y: originalIdea.position_y + offset
+          }
+
+          // Create new idea
+          const newIdeaId = await store.addIdea(originalIdea.text, newPosition)
+          idMapping[ideaId] = newIdeaId
+          duplicatedIdeas.push(newIdeaId)
+
+          // Copy attachments if any
+          if (originalIdea.attachments && originalIdea.attachments.length > 0) {
+            // Note: Attachment duplication would need additional implementation
+            // For now, we'll just duplicate the text-based idea
+          }
+        }
+
+        // Duplicate edges between selected nodes
+        for (const edgeId of selectedEdgeIds) {
+          const originalEdge = state.edges[edgeId]
+          if (!originalEdge) continue
+
+          // Only duplicate edges where both source and target are selected (and thus duplicated)
+          const newSourceId = idMapping[originalEdge.parent_id]
+          const newTargetId = idMapping[originalEdge.child_id]
+
+          if (newSourceId && newTargetId) {
+            try {
+              const newEdgeId = await store.addEdge(newSourceId, newTargetId, originalEdge.type, originalEdge.note)
+              duplicatedEdges.push(newEdgeId)
+            } catch (error) {
+              console.warn('Failed to duplicate edge:', error)
+            }
+          }
+        }
+
+        console.log(`Duplicated ${duplicatedIdeas.length} nodes and ${duplicatedEdges.length} edges`)
+
+        // Select the newly duplicated nodes
+        store.setSelection(duplicatedIdeas)
+
+      } catch (error) {
+        console.error('Failed to duplicate selected nodes:', error)
+      } finally {
+        // End batch operation
+        endBatch()
+      }
+    },
+
     // Undo/Redo
     undo,
     redo,

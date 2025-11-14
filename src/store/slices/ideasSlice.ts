@@ -1,5 +1,5 @@
 import { StateCreator } from 'zustand'
-import { IdeaDB } from '@/types'
+import { IdeaDB, AttachmentMetadata } from '@/types'
 
 // Alias for easier use in the store
 type Idea = IdeaDB
@@ -21,9 +21,11 @@ export interface IdeasSlice {
   loadIdeas: (brainDumpId: string) => Promise<void>
   addIdea: (text: string, position: { x: number, y: number }) => Promise<string>
   addAttachmentIdea: (file: File, position: { x: number, y: number }, description?: string) => Promise<string>
+  addUrlAttachmentIdea: (url: string, position: { x: number, y: number }) => Promise<string>
   updateIdeaText: (id: string, text: string, options?: { skipAI?: boolean }) => Promise<void>
   updateIdeaPosition: (id: string, position: { x: number, y: number }) => void
   updateIdeaDimensions: (id: string, dimensions: { width: number, height: number }) => void
+  updateAttachmentMetadata: (id: string, metadata: Partial<AttachmentMetadata>) => Promise<void>
   deleteIdea: (id: string) => Promise<void>
   selectIdea: (id: string | null) => void
   processIdeaAI: (id: string) => Promise<void>
@@ -263,6 +265,132 @@ export const createIdeasSlice: StateCreator<
     }
   },
 
+  addUrlAttachmentIdea: async (url: string, position: { x: number, y: number }) => {
+    // Create temporary URL attachment idea
+    const tempId = `temp-url-${Date.now()}`;
+    const defaultDescription = `🌐 ${url}`;
+    const tempIdea: Idea = {
+      id: tempId,
+      brain_dump_id: '',
+      text: defaultDescription,
+      position_x: position.x,
+      position_y: position.y,
+      width: 200,
+      height: 200, // Square for attachments
+      type: 'attachment',
+      state: 'generating',
+      metadata: {
+        uploading: true,
+        url: url
+      },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    // Add to state immediately
+    set(state => ({
+      ideas: { ...state.ideas, [tempId]: tempIdea },
+      isProcessing: { ...state.isProcessing, [tempId]: true },
+      lastPlacedIdeaPosition: position
+    }));
+
+    try {
+      // Get current brain dump ID from store
+      const currentBrainDumpId = get().currentBrainDumpId;
+      if (!currentBrainDumpId) {
+        throw new Error('No brain dump selected');
+      }
+
+      // Fetch link preview
+      const response = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch link preview');
+      }
+      const linkPreview = await response.json();
+
+      // Prepare metadata with link preview data
+      const metadata = {
+        url: url,
+        linkPreview: {
+          title: linkPreview.title || 'Untitled',
+          description: linkPreview.description || '',
+          image: linkPreview.image || '',
+          favicon: linkPreview.favicon || ''
+        }
+      };
+
+      // Insert URL attachment idea into database
+      const { data: ideaData, error: ideaError } = await supabase
+        .from('ideas')
+        .insert([{
+          brain_dump_id: currentBrainDumpId,
+          text: linkPreview.title || url,
+          position_x: position.x,
+          position_y: position.y,
+          width: 200,
+          height: 200,
+          type: 'attachment',
+          state: 'ready',
+          metadata: metadata
+        }])
+        .select()
+        .single();
+
+      if (ideaError) throw ideaError;
+      if (!ideaData) throw new Error('No idea data returned from insert');
+
+      // Insert attachment record
+      const { error: attachmentError } = await supabase
+        .from('attachments')
+        .insert([{
+          idea_id: ideaData.id,
+          type: 'url',
+          url: url,
+          filename: linkPreview.title || url,
+          metadata: metadata
+        }]);
+
+      if (attachmentError) throw attachmentError;
+
+      // Replace temp idea with real idea
+      set(state => {
+        const newIdeas = { ...state.ideas };
+        delete newIdeas[tempId];
+        newIdeas[ideaData.id] = {
+          ...ideaData,
+          state: 'ready'
+        };
+
+        const newProcessing = { ...state.isProcessing };
+        delete newProcessing[tempId];
+        newProcessing[ideaData.id] = false;
+
+        return {
+          ideas: newIdeas,
+          isProcessing: newProcessing,
+          lastPlacedIdeaPosition: { x: ideaData.position_x, y: ideaData.position_y }
+        };
+      });
+
+      // Refresh brain dump counts
+      if (get().refreshBrainDumpCounts) {
+        get().refreshBrainDumpCounts(currentBrainDumpId);
+      }
+
+      return ideaData.id;
+    } catch (error) {
+      // Remove temp idea on error
+      set(state => {
+        const newIdeas = { ...state.ideas };
+        delete newIdeas[tempId];
+        const newProcessing = { ...state.isProcessing };
+        delete newProcessing[tempId];
+        return { ideas: newIdeas, isProcessing: newProcessing };
+      });
+      throw error;
+    }
+  },
+
   updateIdeaText: async (id: string, text: string, options: { skipAI?: boolean } = {}) => {
     console.log('✏️ updateIdeaText called for', id, 'with text length:', text.length)
     const { skipAI = false } = options
@@ -358,6 +486,44 @@ export const createIdeasSlice: StateCreator<
         [id]: { ...state.ideas[id], width: dimensions.width, height: dimensions.height }
       }
     }))
+  },
+
+  updateAttachmentMetadata: async (id: string, metadataUpdate: Partial<AttachmentMetadata>) => {
+    const currentState = get()
+    const idea = currentState.ideas[id]
+    
+    if (!idea || idea.type !== 'attachment') {
+      console.warn('Cannot update metadata for non-attachment idea:', id)
+      return
+    }
+
+    // Update local state immediately (optimistic update)
+    const newMetadata = { ...(idea.metadata || {}), ...metadataUpdate }
+    set(state => ({
+      ideas: {
+        ...state.ideas,
+        [id]: { ...state.ideas[id], metadata: newMetadata }
+      }
+    }))
+
+    try {
+      // Update database
+      const { error } = await supabase
+        .from('ideas')
+        .update({ metadata: newMetadata })
+        .eq('id', id)
+
+      if (error) throw error
+    } catch (error) {
+      console.error('Failed to update attachment metadata:', error)
+      // Revert optimistic update on error
+      set(state => ({
+        ideas: {
+          ...state.ideas,
+          [id]: { ...state.ideas[id], metadata: idea.metadata }
+        }
+      }))
+    }
   },
 
   deleteIdea: async (id: string) => {

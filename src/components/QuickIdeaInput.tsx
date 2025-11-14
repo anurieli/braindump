@@ -52,6 +52,35 @@ function getThemeGlassStyle(theme: ThemeType, isActive: boolean = false) {
   }
 }
 
+// URL detection utility
+function isValidHttpUrl(text: string): boolean {
+  try {
+    const url = new URL(text.trim())
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function detectUrl(text: string): string | null {
+  const trimmed = text.trim()
+  
+  // Check if the entire text is a valid URL
+  if (isValidHttpUrl(trimmed)) {
+    return trimmed
+  }
+  
+  // Check for URLs that might be missing protocol
+  if (trimmed.match(/^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/)) {
+    const withProtocol = 'https://' + trimmed
+    if (isValidHttpUrl(withProtocol)) {
+      return withProtocol
+    }
+  }
+  
+  return null
+}
+
 export default function QuickIdeaInput() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const [isFocused, setIsFocused] = useState(false)
@@ -61,6 +90,8 @@ export default function QuickIdeaInput() {
   const hideQuickEditor = useStore(state => state.hideQuickEditor)
   const updateQuickEditorText = useStore(state => state.updateQuickEditorText)
   const addIdea = useStore(state => state.addIdea)
+  const addAttachmentIdea = useStore(state => state.addAttachmentIdea)
+  const addUrlAttachmentIdea = useStore(state => state.addUrlAttachmentIdea)
   const addEdge = useStore(state => state.addEdge)
   const currentBrainDumpId = useStore(state => state.currentBrainDumpId)
   const theme = useStore(state => state.theme)
@@ -113,11 +144,23 @@ export default function QuickIdeaInput() {
         )
       }
 
-      // Create idea at target position (no additional offset needed)
-      const newIdeaId = await addIdea(quickEditor.text.trim(), {
-        x: targetPos.x,
-        y: targetPos.y
-      })
+      // Check if the input is a URL
+      const detectedUrl = detectUrl(quickEditor.text.trim())
+      let newIdeaId: string
+
+      if (detectedUrl) {
+        // Create URL attachment idea
+        newIdeaId = await addUrlAttachmentIdea(detectedUrl, {
+          x: targetPos.x,
+          y: targetPos.y
+        })
+      } else {
+        // Create regular text idea
+        newIdeaId = await addIdea(quickEditor.text.trim(), {
+          x: targetPos.x,
+          y: targetPos.y
+        })
+      }
 
       // If there's a pending connection, create the edge
       if (quickEditor.pendingConnection && newIdeaId) {
@@ -130,7 +173,7 @@ export default function QuickIdeaInput() {
       console.error('Failed to create quick idea:', error)
       // Keep editor open on error so user can retry
     }
-  }, [quickEditor, currentBrainDumpId, viewport, addIdea, addEdge, hideQuickEditor])
+  }, [quickEditor, currentBrainDumpId, viewport, addIdea, addUrlAttachmentIdea, addEdge, hideQuickEditor])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

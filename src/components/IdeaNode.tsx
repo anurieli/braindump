@@ -303,9 +303,16 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         setSelection([...Array.from(selectedIdeaIds), idea.id]);
       }
     } else {
-      // Single select
-      selectIdea(idea.id);
-      setSelection([idea.id]);
+      // For single clicks: only clear selection if clicking on a non-selected node
+      // If clicking on an already selected node (part of multi-selection), preserve selection for dragging
+      if (isSelected && selectedIdeaIds.size > 1) {
+        // This node is already selected as part of a multi-selection - preserve it for bulk drag
+        selectIdea(idea.id); // Just update primary selection
+      } else {
+        // Single select (clear multi-selection)
+        selectIdea(idea.id);
+        setSelection([idea.id]);
+      }
     }
   }, [selectIdea, idea.id, isSelected, selectedIdeaIds, setSelection, isCreatingConnection, connectionSourceId, isEditing]);
 
@@ -371,10 +378,10 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
       dy = e.clientY - dragStartRef.current.y;
       
       if (isSelected && selectedIdeaIds.size > 1) {
-        // Move all selected nodes together
+        // Move all selected nodes together (including the dragged one)
         selectedIdeaIds.forEach(id => {
           const startPos = dragStartPositionsRef.current.get(id);
-          if (startPos && id !== idea.id) {
+          if (startPos) {
             const newX = startPos.x + dx;
             const newY = startPos.y + dy;
             updateIdeaPosition(id, { x: newX, y: newY });

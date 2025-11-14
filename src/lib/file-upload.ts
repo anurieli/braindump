@@ -1,6 +1,9 @@
 import { supabase } from './supabase'
 import type { AttachmentMetadata } from '@/types'
 
+// PDF.js imports - using dynamic import for better performance
+let pdfjsLib: any = null
+
 export interface FileUploadResult {
   url: string
   filename: string
@@ -17,7 +20,44 @@ export interface FileValidationResult {
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const ALLOWED_DOCUMENT_TYPES = ['application/pdf', 'text/plain']
+const ALLOWED_TEXT_TYPES = [
+  'text/plain',           // .txt
+  'text/markdown',        // .md
+  'application/json',     // .json
+  'text/javascript',      // .js
+  'application/javascript', // .js (alternative)
+  'text/typescript',      // .ts (if served with correct MIME)
+  'text/css',            // .css
+  'text/html',           // .html
+  'text/xml',            // .xml
+  'application/xml',      // .xml (alternative)
+  'text/csv',            // .csv
+  'application/yaml',     // .yml, .yaml
+  'text/yaml'            // .yml, .yaml (alternative)
+]
 const STORAGE_BUCKET = 'attachments'
+
+// Text file extensions that browsers might serve with generic MIME types
+const TEXT_EXTENSIONS = [
+  '.txt', '.md', '.markdown', '.js', '.ts', '.tsx', '.jsx',
+  '.css', '.html', '.htm', '.xml', '.json', '.csv', '.yml', 
+  '.yaml', '.sql', '.py', '.rb', '.php', '.java', '.c', '.cpp',
+  '.h', '.hpp', '.cs', '.go', '.rs', '.swift', '.kt', '.scala'
+]
+
+/**
+ * Check if a file is a text file based on MIME type or extension
+ */
+function isTextFile(file: File): boolean {
+  // Check MIME type first
+  if (ALLOWED_TEXT_TYPES.includes(file.type)) {
+    return true
+  }
+  
+  // Fallback to extension for files with generic MIME types
+  const extension = '.' + file.name.split('.').pop()?.toLowerCase()
+  return TEXT_EXTENSIONS.includes(extension)
+}
 
 /**
  * Validate a file before upload
@@ -34,12 +74,14 @@ export function validateFile(file: File): FileValidationResult {
   // Check file type
   if (ALLOWED_IMAGE_TYPES.includes(file.type)) {
     return { valid: true, type: 'image' }
-  } else if (ALLOWED_DOCUMENT_TYPES.includes(file.type)) {
-    return { valid: true, type: file.type === 'application/pdf' ? 'pdf' : 'file' }
+  } else if (file.type === 'application/pdf') {
+    return { valid: true, type: 'pdf' }
+  } else if (isTextFile(file)) {
+    return { valid: true, type: 'file' } // Text files are categorized as 'file'
   } else {
     return {
       valid: false,
-      error: 'Unsupported file type. Only images (JPEG, PNG, WebP, GIF) and PDFs are allowed.'
+      error: 'Unsupported file type. Supported: images (JPEG, PNG, WebP, GIF), PDFs, and text files.'
     }
   }
 }
@@ -145,6 +187,110 @@ async function fileToBase64(file: File): Promise<string> {
 }
 
 /**
+ * Generate a thumbnail for PDF files
+ */
+export async function generatePDFThumbnail(file: File, maxSize: number = 200): Promise<string | null> {
+  if (file.type !== 'application/pdf') {
+    return null
+  }
+
+  try {
+    // Lazy load PDF.js to avoid bundle size impact
+    if (!pdfjsLib) {
+      pdfjsLib = await import('pdfjs-dist')
+      
+      // Set up worker for PDF.js - needed for proper PDF processing
+      if (typeof window !== 'undefined') {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+      }
+    }
+
+    // Convert file to ArrayBuffer
+    const arrayBuffer = await file.arrayBuffer()
+    
+    // Load PDF document
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    
+    // Get first page
+    const page = await pdf.getPage(1)
+    
+    // Calculate scale to fit maxSize
+    const viewport = page.getViewport({ scale: 1 })
+    const scale = Math.min(maxSize / viewport.width, maxSize / viewport.height)
+    const scaledViewport = page.getViewport({ scale })
+
+    // Create canvas
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')
+    
+    if (!context) {
+      return null
+    }
+
+    canvas.width = scaledViewport.width
+    canvas.height = scaledViewport.height
+
+    // Render PDF page to canvas
+    await page.render({
+      canvasContext: context,
+      viewport: scaledViewport
+    }).promise
+
+    // Convert to data URL
+    return canvas.toDataURL('image/jpeg', 0.8)
+  } catch (error) {
+    console.warn('Failed to generate PDF thumbnail:', error)
+    return null
+  }
+}
+
+/**
+ * Extract text content from text files for preview
+ */
+export async function extractTextContent(file: File, maxLength: number = 500): Promise<string | null> {
+  // Only process text files
+  if (!isTextFile(file)) {
+    return null
+  }
+
+  // Don't extract content from files larger than 1MB for performance
+  const MAX_TEXT_FILE_SIZE = 1024 * 1024 // 1MB
+  if (file.size > MAX_TEXT_FILE_SIZE) {
+    return null
+  }
+
+  try {
+    const text = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsText(file, 'utf-8')
+    })
+
+    // Truncate to maxLength and ensure it ends at a word boundary
+    if (text.length <= maxLength) {
+      return text
+    }
+
+    const truncated = text.substring(0, maxLength)
+    const lastSpace = truncated.lastIndexOf(' ')
+    const lastNewline = truncated.lastIndexOf('\n')
+    
+    // Use the later of the two to avoid cutting mid-word
+    const cutPoint = Math.max(lastSpace, lastNewline)
+    
+    if (cutPoint > 0 && cutPoint > maxLength * 0.8) {
+      return truncated.substring(0, cutPoint) + '...'
+    }
+
+    return truncated + '...'
+  } catch (error) {
+    console.warn('Failed to extract text content:', error)
+    return null
+  }
+}
+
+/**
  * Upload a file to Supabase Storage (with base64 fallback)
  */
 export async function uploadFile(file: File): Promise<FileUploadResult> {
@@ -166,7 +312,7 @@ export async function uploadFile(file: File): Promise<FileUploadResult> {
         isBase64: true
       }
 
-      // Add image-specific metadata
+      // Add type-specific metadata
       if (validation.type === 'image') {
         const dimensions = await getImageDimensions(file)
         if (dimensions) {
@@ -180,6 +326,18 @@ export async function uploadFile(file: File): Promise<FileUploadResult> {
           if (thumbnailUrl) {
             metadata.thumbnailUrl = thumbnailUrl
           }
+        }
+      } else if (validation.type === 'pdf') {
+        // Generate PDF thumbnail
+        const pdfThumbnail = await generatePDFThumbnail(file)
+        if (pdfThumbnail) {
+          metadata.thumbnailUrl = pdfThumbnail
+        }
+      } else if (isTextFile(file)) {
+        // Extract text content for preview
+        const textContent = await extractTextContent(file)
+        if (textContent) {
+          metadata.textContent = textContent
         }
       }
 
@@ -225,7 +383,7 @@ export async function uploadFile(file: File): Promise<FileUploadResult> {
       mimeType: file.type
     }
 
-    // Add image-specific metadata
+    // Add type-specific metadata
     if (validation.type === 'image') {
       const dimensions = await getImageDimensions(file)
       if (dimensions) {
@@ -239,6 +397,18 @@ export async function uploadFile(file: File): Promise<FileUploadResult> {
         if (thumbnailUrl) {
           metadata.thumbnailUrl = thumbnailUrl
         }
+      }
+    } else if (validation.type === 'pdf') {
+      // Generate PDF thumbnail
+      const pdfThumbnail = await generatePDFThumbnail(file)
+      if (pdfThumbnail) {
+        metadata.thumbnailUrl = pdfThumbnail
+      }
+    } else if (isTextFile(file)) {
+      // Extract text content for preview
+      const textContent = await extractTextContent(file)
+      if (textContent) {
+        metadata.textContent = textContent
       }
     }
 
@@ -264,6 +434,18 @@ export async function uploadFile(file: File): Promise<FileUploadResult> {
       if (dimensions) {
         metadata.width = dimensions.width
         metadata.height = dimensions.height
+      }
+    } else if (validation.type === 'pdf') {
+      // Generate PDF thumbnail
+      const pdfThumbnail = await generatePDFThumbnail(file)
+      if (pdfThumbnail) {
+        metadata.thumbnailUrl = pdfThumbnail
+      }
+    } else if (isTextFile(file)) {
+      // Extract text content for preview
+      const textContent = await extractTextContent(file)
+      if (textContent) {
+        metadata.textContent = textContent
       }
     }
 
@@ -295,16 +477,32 @@ export async function deleteFile(url: string): Promise<void> {
 }
 
 /**
- * Get file type category for icon rendering
+ * Get file type category for rendering
  */
-export function getFileTypeCategory(mimeType: string): 'image' | 'pdf' | 'document' | 'unknown' {
+export function getFileTypeCategory(mimeType: string, filename?: string, attachmentType?: string): 'image' | 'pdf' | 'text' | 'url' | 'document' | 'unknown' {
+  // Check attachment type first (for URL attachments)
+  if (attachmentType === 'url') {
+    return 'url'
+  }
   if (mimeType.startsWith('image/')) {
     return 'image'
   } else if (mimeType === 'application/pdf') {
     return 'pdf'
+  } else if (ALLOWED_TEXT_TYPES.includes(mimeType)) {
+    return 'text'
+  } else if (filename && isTextFileByExtension(filename)) {
+    return 'text'
   } else if (mimeType.startsWith('text/') || mimeType.includes('document')) {
     return 'document'
   } else {
     return 'unknown'
   }
+}
+
+/**
+ * Check if a file is a text file based on extension only
+ */
+function isTextFileByExtension(filename: string): boolean {
+  const extension = '.' + filename.split('.').pop()?.toLowerCase()
+  return TEXT_EXTENSIONS.includes(extension)
 }
