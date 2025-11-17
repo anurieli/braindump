@@ -46,6 +46,7 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
   const [loadingAttachment, setLoadingAttachment] = useState(!attachment);
   const [isResizing, setIsResizing] = useState(false);
   const [hoveredCorner, setHoveredCorner] = useState<string | null>(null);
+  const [thumbnailError, setThumbnailError] = useState(false);
   
   const dragStartRef = useRef({ x: 0, y: 0, ideaX: idea.position_x, ideaY: idea.position_y });
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
@@ -98,6 +99,18 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
     height?: number;
     mimeType?: string;
     thumbnailUrl?: string;
+    textContent?: string;
+    pageCount?: number;
+    userPreferences?: {
+      width?: number;
+      height?: number;
+    };
+    linkPreview?: {
+      title: string;
+      description: string;
+      image?: string;
+      favicon?: string;
+    };
   };
 
   const initialAspectRatio = (() => {
@@ -156,10 +169,13 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
   const fileType = currentAttachment?.type || 'file';
   const filename = currentAttachment?.filename || idea.text;
   const mimeType = metadata.mimeType;
-  const fileCategory = mimeType ? getFileTypeCategory(mimeType, filename, fileType) : (fileType === 'url' ? 'url' : 'unknown');
+  const fileCategory: 'image' | 'pdf' | 'text' | 'url' | 'document' | 'unknown' = mimeType ? getFileTypeCategory(mimeType, filename, fileType) : (fileType === 'url' ? 'url' : 'unknown');
 
   const hasAspectRatio = Number.isFinite(aspectRatio) && aspectRatio > 0;
-  const canResize = fileCategory === 'image' && hasAspectRatio;
+  const canResize = (fileCategory === 'image' && hasAspectRatio) || 
+                   fileCategory === 'pdf' || 
+                   fileCategory === 'text' || 
+                   fileCategory === 'url';
   
   // Use user preferences for sizing if available, otherwise fall back to defaults
   const preferredWidth = metadata.userPreferences?.width;
@@ -174,7 +190,9 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
   
   const baseHeight = idea.height ?? fallbackHeight;
   const width = Math.max(MIN_DIMENSION, Math.min(MAX_DIMENSION, computedWidth));
-  const height = canResize && aspectRatio > 0 ? width / aspectRatio : Math.max(MIN_DIMENSION, Math.min(MAX_DIMENSION, baseHeight));
+  const height = (canResize && hasAspectRatio && fileCategory === 'image') ? 
+    width / aspectRatio : 
+    Math.max(MIN_DIMENSION, Math.min(MAX_DIMENSION, baseHeight));
 
   // Detect which corner the mouse is over
   const detectCorner = useCallback((e: React.MouseEvent | MouseEvent): string | null => {
@@ -440,8 +458,20 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
       const scaleDelta = (dx + dy) / 2;
       
       const proposedWidth = resizeStartRef.current.width + scaleDelta * 2;
-      const clampedWidth = clampWidthForAspect(proposedWidth, aspectRatio);
-      const clampedHeight = clampedWidth / aspectRatio;
+      const proposedHeight = resizeStartRef.current.height + scaleDelta * 2;
+      
+      let clampedWidth: number;
+      let clampedHeight: number;
+      
+      if (hasAspectRatio && fileCategory === 'image') {
+        // Use aspect ratio for images
+        clampedWidth = clampWidthForAspect(proposedWidth, aspectRatio);
+        clampedHeight = clampedWidth / aspectRatio;
+      } else {
+        // Free-form resizing for PDFs, text files, and URLs
+        clampedWidth = Math.max(MIN_DIMENSION, Math.min(MAX_DIMENSION, proposedWidth));
+        clampedHeight = Math.max(MIN_DIMENSION, Math.min(MAX_DIMENSION, proposedHeight));
+      }
       
       // Calculate position adjustment to keep opposite corner fixed
       const widthDelta = clampedWidth - resizeStartRef.current.width;
@@ -586,29 +616,75 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
       );
     }
 
-    // PDF thumbnail preview
-    if (fileCategory === 'pdf' && metadata.thumbnailUrl) {
+    // PDF preview (with thumbnail or fallback representation)
+    if (fileCategory === 'pdf') {
+      // Debug logging
+      console.log('🔍 PDF Debug Info:', {
+        filename,
+        fileCategory,
+        thumbnailUrl: metadata.thumbnailUrl,
+        thumbnailError,
+        mimeType,
+        metadata: metadata
+      });
+      
       return (
         <div className="w-full h-full bg-gray-50 rounded-md overflow-hidden">
           <div className="relative w-full h-full">
-            {/* PDF thumbnail */}
-            <div className="absolute inset-0">
-              <img
-                src={metadata.thumbnailUrl}
-                alt={`PDF: ${filename}`}
-                draggable={false}
-                className="w-full h-full object-contain"
-                onError={() => {
-                  // If thumbnail fails to load, fall back to icon
-                  console.warn('PDF thumbnail failed to load')
-                }}
-                onDragStart={(e) => e.preventDefault()}
-              />
-            </div>
+            {/* PDF content - show thumbnail if available, otherwise create a document representation */}
+            {metadata.thumbnailUrl && !thumbnailError ? (
+              <div className="absolute inset-0">
+                <img
+                  src={metadata.thumbnailUrl}
+                  alt={`PDF: ${filename}`}
+                  draggable={false}
+                  className="w-full h-full object-contain"
+                  onError={() => {
+                    console.warn('PDF thumbnail failed to load, showing fallback')
+                    setThumbnailError(true)
+                  }}
+                  onDragStart={(e) => e.preventDefault()}
+                />
+              </div>
+            ) : (
+              /* Fallback PDF representation */
+              <div className="absolute inset-0 p-4">
+                {/* Document background */}
+                <div className="w-full h-full bg-white rounded shadow-lg border border-gray-200 relative overflow-hidden">
+                  {/* Document lines to simulate content */}
+                  <div className="p-6 space-y-2">
+                    {[...Array(Math.floor((height - 120) / 16))].map((_, i) => (
+                      <div key={i} className="flex space-x-1">
+                        <div className="h-2 bg-gray-300 rounded flex-1" style={{
+                          width: `${Math.random() * 40 + 60}%`
+                        }}></div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* PDF watermark */}
+                  <div className="absolute bottom-4 right-4 text-gray-400 text-xs font-mono transform rotate-12">
+                    PDF DOCUMENT
+                  </div>
+                </div>
+              </div>
+            )}
             
             {/* PDF indicator overlay */}
             <div className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded shadow-lg font-medium">
               PDF
+            </div>
+            
+            {/* Page count indicator if available */}
+            {metadata.pageCount && metadata.pageCount > 1 && (
+              <div className="absolute top-2 right-2 bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded shadow-lg">
+                {metadata.pageCount} pages
+              </div>
+            )}
+            
+            {/* File name indicator */}
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/70 to-transparent text-white text-xs px-3 py-2 truncate">
+              {filename}
             </div>
           </div>
         </div>
@@ -700,9 +776,6 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
     // File type icons for files without content preview
     const getFileIcon = () => {
       const baseClass = 'h-12 w-12';
-      if (fileCategory === 'pdf') {
-        return <FileIcon className={`${baseClass} text-red-500`} />;
-      }
       if (fileCategory === 'text') {
         return <FileIcon className={`${baseClass} text-green-500`} />;
       }
@@ -793,6 +866,32 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
           >
             <Move className="h-5 w-5 text-white" />
           </div>
+        )}
+
+        {/* Resize handles in corners - show when hovering and can resize */}
+        {isHovered && canResize && (
+          <>
+            {/* Top-left corner */}
+            <div
+              className="absolute -top-1 -left-1 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-nwse-resize z-50 transition-opacity"
+              style={{ opacity: hoveredCorner === 'top-left' ? 1 : 0.7 }}
+            />
+            {/* Top-right corner */}
+            <div
+              className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-nesw-resize z-50 transition-opacity"
+              style={{ opacity: hoveredCorner === 'top-right' ? 1 : 0.7 }}
+            />
+            {/* Bottom-left corner */}
+            <div
+              className="absolute -bottom-1 -left-1 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-nesw-resize z-50 transition-opacity"
+              style={{ opacity: hoveredCorner === 'bottom-left' ? 1 : 0.7 }}
+            />
+            {/* Bottom-right corner */}
+            <div
+              className="absolute -bottom-1 -right-1 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-nwse-resize z-50 transition-opacity"
+              style={{ opacity: hoveredCorner === 'bottom-right' ? 1 : 0.7 }}
+            />
+          </>
         )}
       </div>
     </div>

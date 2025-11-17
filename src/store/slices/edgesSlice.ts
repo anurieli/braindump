@@ -262,6 +262,16 @@ export const createEdgesSlice: StateCreator<
       return { valid: false, reason: 'Cannot create edge to same idea' }
     }
 
+    // Check if parent idea exists (ignore temp IDs for validation during creation)
+    if (!childId.includes('temp-') && !get().ideas[parentId]) {
+      return { valid: false, reason: `Parent idea ${parentId} does not exist` }
+    }
+
+    // Check if child idea exists (ignore temp IDs for pre-creation validation)
+    if (!childId.includes('temp-') && !get().ideas[childId]) {
+      return { valid: false, reason: `Child idea ${childId} does not exist` }
+    }
+
     // Check for duplicate edge
     const existingEdge = Object.values(get().edges).find(
       edge => edge.parent_id === parentId && edge.child_id === childId
@@ -274,10 +284,14 @@ export const createEdgesSlice: StateCreator<
     const edgeTypes = get().edgeTypes
     const typeConfig = edgeType ? edgeTypes.find(et => et.name === edgeType) : null
 
-    // Check for circular dependency only if edge type prevents cycles
+    // Enhanced circular dependency check only if edge type prevents cycles
     if (!typeConfig || typeConfig.prevents_cycles) {
-      if (get().wouldCreateCycle(parentId, childId, edgeType)) {
-        return { valid: false, reason: 'Would create circular dependency' }
+      const cycleCheck = get().wouldCreateCycle(parentId, childId, edgeType)
+      if (cycleCheck) {
+        return { 
+          valid: false, 
+          reason: `Would create circular dependency: ${parentId} → ... → ${childId} → ${parentId}` 
+        }
       }
     }
 
@@ -328,23 +342,56 @@ export const createEdgesSlice: StateCreator<
       ? edges.filter(edge => edge.type === edgeType)  // Only check same type
       : edges  // Check all edges if no type specified
     
+    // Enhanced cycle detection with path reconstruction for better debugging
     const visited = new Set<string>()
+    const recursionStack = new Set<string>()
+    const pathStack: string[] = []
     
-    const hasPath = (from: string, to: string): boolean => {
-      if (from === to) return true
+    const hasPath = (from: string, to: string, currentPath: string[] = []): boolean => {
+      if (from === to) {
+        pathStack.length = 0
+        pathStack.push(...currentPath, from)
+        return true
+      }
+      
+      if (recursionStack.has(from)) {
+        // Found a cycle in the current path
+        const cycleStart = currentPath.indexOf(from)
+        if (cycleStart !== -1) {
+          pathStack.length = 0
+          pathStack.push(...currentPath.slice(cycleStart), from)
+          return true
+        }
+      }
+      
       if (visited.has(from)) return false
       
       visited.add(from)
+      recursionStack.add(from)
       
       // Find all children of 'from' in relevant edges
       const children = relevantEdges
         .filter(edge => edge.parent_id === from)
         .map(edge => edge.child_id)
       
-      return children.some(child => hasPath(child, to))
+      for (const child of children) {
+        if (hasPath(child, to, [...currentPath, from])) {
+          recursionStack.delete(from)
+          return true
+        }
+      }
+      
+      recursionStack.delete(from)
+      return false
     }
     
     // Check if there's already a path from childId to parentId
-    return hasPath(childId, parentId)
+    const wouldCycle = hasPath(childId, parentId)
+    
+    if (wouldCycle && pathStack.length > 0) {
+      console.warn('🔄 Cycle detected:', pathStack.join(' → '))
+    }
+    
+    return wouldCycle
   }
 })

@@ -5,6 +5,7 @@ import { IdeasSlice, createIdeasSlice } from './slices/ideasSlice'
 import { EdgesSlice, createEdgesSlice } from './slices/edgesSlice'
 import { UiSlice, createUiSlice } from './slices/uiSlice'
 import { undoDebugger, debugHistory, debugError } from '@/lib/undo-debug'
+import '@/lib/atomic-operations-test' // Import test functions to make them available globally
 
 export type StoreState = BrainDumpsSlice & IdeasSlice & EdgesSlice & UiSlice
 
@@ -532,6 +533,7 @@ export const useStoreActions = () => {
     // Ideas
     loadIdeas: store.loadIdeas,
     addIdea: store.addIdea,
+    addIdeaWithEdge: store.addIdeaWithEdge,
     updateIdeaText: store.updateIdeaText,
     updateIdeaPosition: store.updateIdeaPosition,
     deleteIdea: store.deleteIdea,

@@ -1,9 +1,6 @@
 import { supabase } from './supabase'
 import type { AttachmentMetadata } from '@/types'
 
-// PDF.js imports - using dynamic import for better performance
-let pdfjsLib: any = null
-
 export interface FileUploadResult {
   url: string
   filename: string
@@ -191,35 +188,37 @@ async function fileToBase64(file: File): Promise<string> {
  */
 export async function generatePDFThumbnail(file: File, maxSize: number = 200): Promise<string | null> {
   if (file.type !== 'application/pdf') {
+    console.log('📄 Not a PDF file, skipping thumbnail generation');
     return null
   }
 
+  console.log('📄 Starting PDF thumbnail generation...');
+
   try {
-    // Lazy load PDF.js to avoid bundle size impact
-    if (!pdfjsLib) {
-      pdfjsLib = await import('pdfjs-dist')
-      
-      // Set up worker for PDF.js - needed for proper PDF processing
-      if (typeof window !== 'undefined') {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
-      }
+    // Skip PDF thumbnail generation in server-side rendering
+    if (typeof window === 'undefined') {
+      console.log('📄 Server-side rendering detected, skipping thumbnail');
+      return null
     }
 
+    // Use pdf-lib to extract basic PDF information and create a representative thumbnail
+    console.log('📄 Loading pdf-lib...');
+    const { PDFDocument } = await import('pdf-lib')
+    
     // Convert file to ArrayBuffer
+    console.log('📄 Converting file to ArrayBuffer...');
     const arrayBuffer = await file.arrayBuffer()
     
-    // Load PDF document
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-    
-    // Get first page
-    const page = await pdf.getPage(1)
-    
-    // Calculate scale to fit maxSize
-    const viewport = page.getViewport({ scale: 1 })
-    const scale = Math.min(maxSize / viewport.width, maxSize / viewport.height)
-    const scaledViewport = page.getViewport({ scale })
+    // Load PDF document to get metadata
+    console.log('📄 Loading PDF document...');
+    const pdfDoc = await PDFDocument.load(arrayBuffer)
+    const pageCount = pdfDoc.getPageCount()
+    console.log('📄 PDF loaded successfully. Pages:', pageCount);
+    const firstPage = pdfDoc.getPage(0)
+    const { width, height } = firstPage.getSize()
+    console.log('📄 First page dimensions:', { width, height });
 
-    // Create canvas
+    // Create a representative canvas thumbnail
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')
     
@@ -227,19 +226,73 @@ export async function generatePDFThumbnail(file: File, maxSize: number = 200): P
       return null
     }
 
-    canvas.width = scaledViewport.width
-    canvas.height = scaledViewport.height
+    // Calculate dimensions for thumbnail
+    const aspectRatio = width / height
+    let thumbWidth = maxSize
+    let thumbHeight = maxSize
+    
+    if (aspectRatio > 1) {
+      thumbHeight = maxSize / aspectRatio
+    } else {
+      thumbWidth = maxSize * aspectRatio
+    }
 
-    // Render PDF page to canvas
-    await page.render({
-      canvasContext: context,
-      viewport: scaledViewport
-    }).promise
+    canvas.width = thumbWidth
+    canvas.height = thumbHeight
 
-    // Convert to data URL
-    return canvas.toDataURL('image/jpeg', 0.8)
+    // Create a stylized PDF thumbnail representation
+    // Background
+    const gradient = context.createLinearGradient(0, 0, thumbWidth, thumbHeight)
+    gradient.addColorStop(0, '#ffffff')
+    gradient.addColorStop(1, '#f8f9fa')
+    context.fillStyle = gradient
+    context.fillRect(0, 0, thumbWidth, thumbHeight)
+
+    // Border
+    context.strokeStyle = '#e5e7eb'
+    context.lineWidth = 2
+    context.strokeRect(1, 1, thumbWidth - 2, thumbHeight - 2)
+
+    // PDF icon representation - create lines to simulate document content
+    const lineHeight = 8
+    const lineSpacing = 4
+    const startY = 20
+    const marginX = 12
+    const maxLineWidth = thumbWidth - (marginX * 2)
+
+    context.strokeStyle = '#6b7280'
+    context.lineWidth = 1
+
+    // Draw representative text lines
+    for (let i = 0; i < Math.floor((thumbHeight - 40) / (lineHeight + lineSpacing)); i++) {
+      const y = startY + i * (lineHeight + lineSpacing)
+      const lineWidth = Math.random() * (maxLineWidth * 0.4) + (maxLineWidth * 0.6)
+      
+      context.beginPath()
+      context.moveTo(marginX, y)
+      context.lineTo(marginX + lineWidth, y)
+      context.stroke()
+    }
+
+    // Add PDF indicator
+    context.fillStyle = '#dc2626'
+    context.font = 'bold 10px sans-serif'
+    context.textAlign = 'center'
+    context.fillText('PDF', thumbWidth / 2, thumbHeight - 8)
+
+    // Add page count if multiple pages
+    if (pageCount > 1) {
+      context.fillStyle = '#374151'
+      context.font = '8px sans-serif'
+      context.textAlign = 'right'
+      context.fillText(`${pageCount} pages`, thumbWidth - 5, 12)
+    }
+
+    const result = canvas.toDataURL('image/png', 0.9)
+    console.log('📄 PDF thumbnail generated successfully, size:', result.length, 'chars');
+    return result
   } catch (error) {
-    console.warn('Failed to generate PDF thumbnail:', error)
+    console.error('📄 Failed to generate PDF thumbnail:', error)
     return null
   }
 }
@@ -328,10 +381,23 @@ export async function uploadFile(file: File): Promise<FileUploadResult> {
           }
         }
       } else if (validation.type === 'pdf') {
-        // Generate PDF thumbnail
+        // Generate PDF thumbnail and extract metadata
+        console.log('📄 Generating PDF thumbnail for:', file.name);
         const pdfThumbnail = await generatePDFThumbnail(file)
+        console.log('📄 PDF thumbnail result:', pdfThumbnail ? 'Generated successfully' : 'Failed to generate');
         if (pdfThumbnail) {
           metadata.thumbnailUrl = pdfThumbnail
+          console.log('📄 PDF thumbnail URL saved to metadata');
+        }
+        
+        // Extract PDF page count
+        try {
+          const { PDFDocument } = await import('pdf-lib')
+          const arrayBuffer = await file.arrayBuffer()
+          const pdfDoc = await PDFDocument.load(arrayBuffer)
+          metadata.pageCount = pdfDoc.getPageCount()
+        } catch (error) {
+          console.warn('Failed to extract PDF page count:', error)
         }
       } else if (isTextFile(file)) {
         // Extract text content for preview
@@ -399,10 +465,20 @@ export async function uploadFile(file: File): Promise<FileUploadResult> {
         }
       }
     } else if (validation.type === 'pdf') {
-      // Generate PDF thumbnail
+      // Generate PDF thumbnail and extract metadata
       const pdfThumbnail = await generatePDFThumbnail(file)
       if (pdfThumbnail) {
         metadata.thumbnailUrl = pdfThumbnail
+      }
+      
+      // Extract PDF page count
+      try {
+        const { PDFDocument } = await import('pdf-lib')
+        const arrayBuffer = await file.arrayBuffer()
+        const pdfDoc = await PDFDocument.load(arrayBuffer)
+        metadata.pageCount = pdfDoc.getPageCount()
+      } catch (error) {
+        console.warn('Failed to extract PDF page count:', error)
       }
     } else if (isTextFile(file)) {
       // Extract text content for preview
@@ -436,10 +512,20 @@ export async function uploadFile(file: File): Promise<FileUploadResult> {
         metadata.height = dimensions.height
       }
     } else if (validation.type === 'pdf') {
-      // Generate PDF thumbnail
+      // Generate PDF thumbnail and extract metadata
       const pdfThumbnail = await generatePDFThumbnail(file)
       if (pdfThumbnail) {
         metadata.thumbnailUrl = pdfThumbnail
+      }
+      
+      // Extract PDF page count
+      try {
+        const { PDFDocument } = await import('pdf-lib')
+        const arrayBuffer = await file.arrayBuffer()
+        const pdfDoc = await PDFDocument.load(arrayBuffer)
+        metadata.pageCount = pdfDoc.getPageCount()
+      } catch (error) {
+        console.warn('Failed to extract PDF page count:', error)
       }
     } else if (isTextFile(file)) {
       // Extract text content for preview

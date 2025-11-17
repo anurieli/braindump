@@ -102,6 +102,7 @@ export interface AttachmentMetadata {
   previewUrl?: string;
   isBase64?: boolean;
   textContent?: string; // For text file previews
+  pageCount?: number; // For PDF documents
   userPreferences?: {
     width?: number;
     height?: number;

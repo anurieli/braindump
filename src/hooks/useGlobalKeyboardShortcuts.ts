@@ -61,9 +61,9 @@ export function useGlobalKeyboardShortcuts() {
     description: 'Toggle side panel'
   })
 
-  // Ctrl+Z: Undo
-  useHotkeys('ctrl+z', async (event) => {
-    debugKeyboard('Ctrl+Z', 'Undo', canUndo())
+  // Ctrl+Z / Cmd+Z: Undo (cross-platform)
+  useHotkeys('ctrl+z, meta+z', async (event) => {
+    debugKeyboard('Ctrl/Cmd+Z', 'Undo', canUndo())
     event.preventDefault()
     if (canUndo()) {
       await undo()
@@ -73,9 +73,9 @@ export function useGlobalKeyboardShortcuts() {
     description: 'Undo last action'
   })
 
-  // Ctrl+Shift+Z: Redo
-  useHotkeys('ctrl+shift+z', async (event) => {
-    debugKeyboard('Ctrl+Shift+Z', 'Redo', canRedo())
+  // Ctrl+Shift+Z / Cmd+Shift+Z: Redo (cross-platform)
+  useHotkeys('ctrl+shift+z, meta+shift+z', async (event) => {
+    debugKeyboard('Ctrl/Cmd+Shift+Z', 'Redo', canRedo())
     event.preventDefault()
     if (canRedo()) {
       await redo()

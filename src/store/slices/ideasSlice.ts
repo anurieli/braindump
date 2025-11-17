@@ -20,6 +20,7 @@ export interface IdeasSlice {
   // Actions
   loadIdeas: (brainDumpId: string) => Promise<void>
   addIdea: (text: string, position: { x: number, y: number }) => Promise<string>
+  addIdeaWithEdge: (text: string, position: { x: number, y: number }, parentId?: string, edgeType?: string, edgeNote?: string) => Promise<{ ideaId: string, edgeId?: string }>
   addAttachmentIdea: (file: File, position: { x: number, y: number }, description?: string) => Promise<string>
   addUrlAttachmentIdea: (url: string, position: { x: number, y: number }) => Promise<string>
   updateIdeaText: (id: string, text: string, options?: { skipAI?: boolean }) => Promise<void>
@@ -137,6 +138,211 @@ export const createIdeasSlice: StateCreator<
       return data.id
     } catch (error) {
       console.error('Failed to add idea:', error)
+      throw error
+    }
+  },
+
+  addIdeaWithEdge: async (text: string, position: { x: number, y: number }, parentId?: string, edgeType = 'relates-to', edgeNote?: string) => {
+    // Input validation
+    if (!text || text.trim().length === 0) {
+      throw new Error('Idea text cannot be empty')
+    }
+
+    if (text.length > 5000) {
+      throw new Error('Idea text too long (max 5000 characters)')
+    }
+
+    if (!position || typeof position.x !== 'number' || typeof position.y !== 'number') {
+      throw new Error('Invalid position coordinates')
+    }
+
+    if (parentId && typeof parentId !== 'string') {
+      throw new Error('Invalid parent ID format')
+    }
+
+    if (edgeType && typeof edgeType !== 'string') {
+      throw new Error('Invalid edge type format')
+    }
+
+    try {
+      // Get current brain dump ID from store
+      const currentBrainDumpId = get().currentBrainDumpId
+      if (!currentBrainDumpId) {
+        throw new Error('No brain dump selected')
+      }
+
+      // Validate parent relationship if provided
+      if (parentId) {
+        if (!get().ideas[parentId]) {
+          throw new Error(`Parent idea ${parentId} does not exist`)
+        }
+
+        // Check if parent idea is in same brain dump
+        const parentIdea = get().ideas[parentId]
+        if (parentIdea.brain_dump_id !== currentBrainDumpId) {
+          throw new Error('Cannot create edge to idea in different brain dump')
+        }
+
+        // Validate edge before proceeding
+        const edgeValidation = get().validateEdge(parentId, 'temp-will-be-replaced', edgeType)
+        if (!edgeValidation.valid && !edgeValidation.reason?.includes('Edge already exists')) {
+          throw new Error(`Invalid edge relationship: ${edgeValidation.reason}`)
+        }
+
+        // Validate edge type exists
+        const edgeTypes = get().edgeTypes
+        const typeExists = edgeTypes.some(et => et.name === edgeType)
+        if (!typeExists) {
+          console.warn(`Edge type '${edgeType}' not found in available types, using default`)
+          edgeType = 'relates-to'
+        }
+      }
+
+      // Determine state based on text length
+      const needsAI = text.length >= 60
+      const initialState = needsAI ? 'generating' : 'ready'
+
+      let ideaId: string
+      let edgeId: string | undefined
+      let ideaCreated = false
+      let edgeCreated = false
+
+      try {
+        // Step 1: Create the idea first
+        const { data: ideaData, error: ideaError } = await supabase
+          .from('ideas')
+          .insert([{
+            brain_dump_id: currentBrainDumpId,
+            text: text.trim(),
+            position_x: Math.round(position.x),
+            position_y: Math.round(position.y),
+            width: 200,
+            height: 100,
+            type: 'text',
+            state: initialState
+          }])
+          .select()
+          .single()
+
+        if (ideaError) {
+          console.error('Database error creating idea:', ideaError)
+          throw new Error(`Failed to create idea: ${ideaError.message || ideaError}`)
+        }
+        
+        if (!ideaData) {
+          throw new Error('No idea data returned from insert')
+        }
+
+        ideaId = ideaData.id
+        ideaCreated = true
+
+        // Step 2: Create edge if parent is specified
+        if (parentId) {
+          // Re-validate now that we have the actual child ID
+          const finalEdgeValidation = get().validateEdge(parentId, ideaId, edgeType)
+          if (!finalEdgeValidation.valid) {
+            throw new Error(`Failed to create edge: ${finalEdgeValidation.reason}`)
+          }
+
+          const { data: edgeData, error: edgeError } = await supabase
+            .from('edges')
+            .insert([{
+              brain_dump_id: currentBrainDumpId,
+              parent_id: parentId,
+              child_id: ideaId,
+              type: edgeType,
+              note: edgeNote?.trim() || null
+            }])
+            .select()
+            .single()
+
+          if (edgeError) {
+            console.error('Database error creating edge:', edgeError)
+            throw new Error(`Failed to create edge: ${edgeError.message || edgeError}`)
+          }
+
+          if (!edgeData) {
+            throw new Error('No edge data returned from insert')
+          }
+
+          edgeId = edgeData.id
+          edgeCreated = true
+
+          // Update edges state with the new edge
+          set(state => ({
+            edges: {
+              ...state.edges,
+              [edgeData.id]: edgeData
+            }
+          }))
+        }
+
+        // Step 3: Add idea to state
+        set(state => ({
+          ideas: {
+            ...state.ideas,
+            [ideaData.id]: ideaData
+          },
+          isProcessing: {
+            ...state.isProcessing,
+            [ideaData.id]: needsAI
+          },
+          lastPlacedIdeaPosition: { x: ideaData.position_x, y: ideaData.position_y }
+        }))
+
+        // Step 4: Save history immediately for atomic undo functionality
+        console.log('💾 addIdeaWithEdge: Saving history immediately for atomic operation:', { ideaId, edgeId })
+        undoRedoManager.saveState({
+          ideas: get().ideas,
+          edges: get().edges
+        }, true)
+
+        // Step 5: Process AI enhancements if needed
+        if (needsAI) {
+          // Run AI processing in background, don't let it fail the atomic operation
+          try {
+            get().processIdeaAI(ideaData.id)
+          } catch (aiError) {
+            console.warn('AI processing failed for idea', ideaId, ':', aiError)
+          }
+        }
+
+        // Step 6: Refresh brain dump counts
+        if (get().refreshBrainDumpCounts) {
+          try {
+            get().refreshBrainDumpCounts(currentBrainDumpId)
+          } catch (countError) {
+            console.warn('Failed to refresh brain dump counts:', countError)
+          }
+        }
+
+        return { ideaId: ideaData.id, edgeId }
+      } catch (operationError) {
+        // Cleanup on failure - rollback database changes
+        console.error('Atomic operation failed, performing cleanup:', operationError)
+
+        if (edgeCreated && edgeId) {
+          try {
+            await supabase.from('edges').delete().eq('id', edgeId)
+            console.log('Cleaned up edge:', edgeId)
+          } catch (cleanupError) {
+            console.error('Failed to cleanup edge during rollback:', cleanupError)
+          }
+        }
+
+        if (ideaCreated && ideaId) {
+          try {
+            await supabase.from('ideas').delete().eq('id', ideaId)
+            console.log('Cleaned up idea:', ideaId)
+          } catch (cleanupError) {
+            console.error('Failed to cleanup idea during rollback:', cleanupError)
+          }
+        }
+
+        throw operationError
+      }
+    } catch (error) {
+      console.error('Failed to add idea with edge:', error)
       throw error
     }
   },
