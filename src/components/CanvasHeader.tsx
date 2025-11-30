@@ -6,13 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Toolbar from '@/components/Toolbar';
-import { useStore, undo, redo, canUndo, canRedo, startBatch, endBatch } from '@/store';
+import { useStore, startBatch, endBatch } from '@/store';
+import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { saveUserPreferencesManually } from '@/hooks/useUserPreferences';
 
 function ControlPanelButton() {
   const [isOpen, setIsOpen] = useState(false);
-  const [canUndoState, setCanUndoState] = useState(false);
-  const [canRedoState, setCanRedoState] = useState(false);
 
   // Store selectors
   const viewport = useStore(state => state.viewport);
@@ -29,8 +28,6 @@ function ControlPanelButton() {
   const deleteIdea = useStore(state => state.deleteIdea);
   const deleteEdge = useStore(state => state.deleteEdge);
   const clearSelection = useStore(state => state.clearSelection);
-  const ideas = useStore(state => state.ideas);
-  const edges = useStore(state => state.edges);
 
   // Convert Sets to arrays
   const selectedIdeaIds = Array.from(selectedIdeaIdsSet);
@@ -44,11 +41,8 @@ function ControlPanelButton() {
 
   const isDarkTheme = theme === 'dark';
 
-  // Update undo/redo states when ideas/edges change
-  useEffect(() => {
-    setCanUndoState(canUndo());
-    setCanRedoState(canRedo());
-  }, [ideas, edges]);
+  // Use centralized undo/redo hook
+  const { canUndo, canRedo, undo, redo, isPerformingAction } = useUndoRedo();
 
   const handleZoomIn = () => {
     const newZoom = Math.min(3, viewport.zoom + 0.1);
@@ -87,17 +81,11 @@ function ControlPanelButton() {
   };
 
   const handleUndo = async () => {
-    if (!canUndo()) return;
     await undo();
-    setCanUndoState(canUndo());
-    setCanRedoState(canRedo());
   };
 
   const handleRedo = async () => {
-    if (!canRedo()) return;
     await redo();
-    setCanUndoState(canUndo());
-    setCanRedoState(canRedo());
   };
 
   const handleDeleteSelected = async () => {
@@ -145,7 +133,7 @@ function ControlPanelButton() {
                 size="sm"
                 variant="outline"
                 onClick={handleUndo}
-                disabled={!canUndoState}
+                disabled={!canUndo || isPerformingAction}
                 className="flex-1"
               >
                 <Undo2 className="w-4 h-4 mr-2" />
@@ -155,7 +143,7 @@ function ControlPanelButton() {
                 size="sm"
                 variant="outline"
                 onClick={handleRedo}
-                disabled={!canRedoState}
+                disabled={!canRedo || isPerformingAction}
                 className="flex-1"
               >
                 <Redo2 className="w-4 h-4 mr-2" />

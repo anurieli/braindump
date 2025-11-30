@@ -293,3 +293,117 @@ export function lineIntersectsRect(
   return false;
 }
 
+// Task 13: Enhanced collision detection for drag and drop
+export interface IdeaRect {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// Calculate overlap percentage between two rectangles (0-1)
+export function calculateOverlapPercentage(rect1: Rect, rect2: Rect): number {
+  if (!rectsIntersect(rect1, rect2)) {
+    return 0;
+  }
+  
+  const overlapLeft = Math.max(rect1.x, rect2.x);
+  const overlapRight = Math.min(rect1.x + rect1.width, rect2.x + rect2.width);
+  const overlapTop = Math.max(rect1.y, rect2.y);
+  const overlapBottom = Math.min(rect1.y + rect1.height, rect2.y + rect2.height);
+  
+  const overlapWidth = overlapRight - overlapLeft;
+  const overlapHeight = overlapBottom - overlapTop;
+  const overlapArea = overlapWidth * overlapHeight;
+  
+  const rect1Area = rect1.width * rect1.height;
+  const rect2Area = rect2.width * rect2.height;
+  const smallerArea = Math.min(rect1Area, rect2Area);
+  
+  return overlapArea / smallerArea;
+}
+
+// Detect collision between a dragged idea and other ideas
+export function detectCollision(
+  draggedIdea: IdeaRect,
+  otherIdeas: IdeaRect[],
+  touchThreshold = 0.1,  // 10% overlap for touch detection
+  mergeThreshold = 0.4   // 40% overlap for merge detection
+): {
+  touchedIdeas: string[];
+  mergeCandidate: string | null;
+} {
+  const touchedIdeas: string[] = [];
+  let mergeCandidate: string | null = null;
+  let maxOverlap = 0;
+  
+  const draggedRect: Rect = {
+    x: draggedIdea.x,
+    y: draggedIdea.y,
+    width: draggedIdea.width,
+    height: draggedIdea.height
+  };
+  
+  otherIdeas.forEach(idea => {
+    if (idea.id === draggedIdea.id) return; // Skip self
+    
+    const otherRect: Rect = {
+      x: idea.x,
+      y: idea.y,
+      width: idea.width,
+      height: idea.height
+    };
+    
+    const overlapPercentage = calculateOverlapPercentage(draggedRect, otherRect);
+    
+    if (overlapPercentage >= touchThreshold) {
+      touchedIdeas.push(idea.id);
+      
+      // Track the idea with maximum overlap for potential merging
+      if (overlapPercentage >= mergeThreshold && overlapPercentage > maxOverlap) {
+        maxOverlap = overlapPercentage;
+        mergeCandidate = idea.id;
+      }
+    }
+  });
+  
+  return { touchedIdeas, mergeCandidate };
+}
+
+// Throttled collision detection to improve performance during drag
+export class CollisionDetector {
+  private lastCheck = 0;
+  private throttleMs: number;
+  
+  constructor(throttleMs = 16) { // ~60fps
+    this.throttleMs = throttleMs;
+  }
+  
+  checkCollision(
+    draggedIdea: IdeaRect,
+    otherIdeas: IdeaRect[],
+    touchThreshold?: number,
+    mergeThreshold?: number
+  ): { touchedIdeas: string[]; mergeCandidate: string | null } | null {
+    const now = Date.now();
+    if (now - this.lastCheck < this.throttleMs) {
+      return null; // Skip this check due to throttling
+    }
+    
+    this.lastCheck = now;
+    return detectCollision(draggedIdea, otherIdeas, touchThreshold, mergeThreshold);
+  }
+}
+
+// Convert IdeaDB to IdeaRect for collision detection
+export function ideaToRect(idea: { id: string; position_x: number; position_y: number; width?: number; height?: number }): IdeaRect {
+  return {
+    id: idea.id,
+    x: idea.position_x,
+    y: idea.position_y,
+    width: idea.width || 200,
+    height: idea.height || 100
+  };
+}
+

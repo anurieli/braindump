@@ -701,29 +701,8 @@ export default function Canvas({ inputBoxRef }: CanvasProps) {
         return;
       }
 
-      // Command+Z (Mac) or Ctrl+Z (Windows/Linux) - Undo
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        // Import dynamically to avoid circular dependency
-        import('@/store').then(async ({ undo, canUndo }) => {
-          if (canUndo()) {
-            await undo();
-          }
-        });
-        return;
-      }
-
-      // Command+Shift+Z (Mac) or Ctrl+Shift+Z (Windows/Linux) - Redo
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
-        e.preventDefault();
-        // Import dynamically to avoid circular dependency
-        import('@/store').then(async ({ redo, canRedo }) => {
-          if (canRedo()) {
-            await redo();
-          }
-        });
-        return;
-      }
+      // NOTE: Undo/Redo are now handled by useGlobalKeyboardShortcuts hook
+      // to prevent conflicts between multiple handlers
 
       // Escape - clear selection or cancel connection
       if (e.key === 'Escape') {

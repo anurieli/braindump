@@ -7,6 +7,7 @@ import type { IdeaDB } from '@/types';
 import { Paperclip, Move, MoveDiagonal } from 'lucide-react';
 import AttachmentNode from './AttachmentNode';
 import { supabase } from '@/lib/supabase';
+import { CollisionDetector, ideaToRect } from '@/lib/geometry';
 
 interface IdeaNodeProps {
   idea: IdeaDB;
@@ -43,6 +44,12 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const dragHoverTargetId = useStore(state => state.dragHoverTargetId);
   const isCommandKeyPressed = useStore(state => state.isCommandKeyPressed);
   
+  // Task 13: Enhanced drag state
+  const touchedIdeaIds = useStore(state => state.touchedIdeaIds);
+  const dropTargetIdeaId = useStore(state => state.dropTargetIdeaId);
+  const isDragOverlapDetected = useStore(state => state.isDragOverlapDetected);
+  const dragCreateEdgesMode = useStore(state => state.dragCreateEdgesMode);
+  
   // Auto-relate mode state
   const isAutoRelateMode = useStore(state => state.isAutoRelateMode);
   
@@ -65,19 +72,34 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const hideShortcutAssistant = useStore(state => state.hideShortcutAssistant);
   const updateIdeaText = useStore(state => state.updateIdeaText);
   
+  // Task 13: Enhanced drag actions
+  const addTouchedIdeaId = useStore(state => state.addTouchedIdeaId);
+  const clearTouchedIdeaIds = useStore(state => state.clearTouchedIdeaIds);
+  const setDropTargetIdeaId = useStore(state => state.setDropTargetIdeaId);
+  const setDragOverlapDetected = useStore(state => state.setDragOverlapDetected);
+  const resetDragState = useStore(state => state.resetDragState);
+  const mergeIdeas = useStore(state => state.mergeIdeas);
+  
   const [isDragging, setIsDragging] = useState(false);
   const [isMouseDown, setIsMouseDown] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState('');
   const [glowOpacity, setGlowOpacity] = useState(() => computeInitialGlowOpacity(idea.created_at));
-  // Check if this idea is the current drag hover target
+  
+  // Task 13: Enhanced drag feedback
   const isDraggedOver = dragHoverTargetId === idea.id;
+  const isTouched = touchedIdeaIds.has(idea.id);
+  const isMergeCandidate = dropTargetIdeaId === idea.id;
+  
   const dragStartRef = useRef({ x: 0, y: 0, ideaX: idea.position_x, ideaY: idea.position_y });
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const nodeRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  
+  // Task 13: Collision detector instance (shared across all nodes for efficiency)
+  const collisionDetectorRef = useRef(new CollisionDetector(16)); // 60fps throttling
   
   const isSelected = selectedIdeaIds.has(idea.id);
   const isConnectionSource = connectionSourceId === idea.id;
@@ -341,9 +363,10 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         setDraggedIdeaId(idea.id);
         console.log('🚀 Started dragging idea:', idea.id);
         
-        // Show shortcut assistant for edge creation
-        console.log('📢 Showing ShortcutAssistant');
-        showShortcutAssistant('Hold Command to create edges while you touch them');
+        // Task 13: Clear previous drag state and show enhanced shortcut assistant
+        clearTouchedIdeaIds();
+        console.log('📢 Showing enhanced ShortcutAssistant for Task 13');
+        showShortcutAssistant('Drag to auto-create edges • Overlap significantly to merge ideas • Command key for manual edge control');
         
         // Store initial positions of all selected nodes for group movement
         dragStartPositionsRef.current.clear();
@@ -394,27 +417,79 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
         updateIdeaPosition(idea.id, { x: newX, y: newY });
       }
       
-      // Check if we're dragging over other ideas for immediate edge creation/deletion
-      if (draggedIdeaId === idea.id) {
-        // Find all idea elements that might be under the mouse cursor
-        const elementsUnderMouse = document.elementsFromPoint(e.clientX, e.clientY);
-        const ideaElementUnderMouse = elementsUnderMouse.find((el) => {
-          const element = el as HTMLElement;
-          return element.dataset?.ideaId && element.dataset.ideaId !== idea.id;
-        });
+      // Task 13: Enhanced collision detection with real-time edge creation and merging
+      if (draggedIdeaId === idea.id && dragCreateEdgesMode) {
+        // Get all ideas in current brain dump for collision detection
+        const allIdeas = Object.values(ideas).filter(i => i.brain_dump_id === currentBrainDumpId);
+        const otherIdeas = allIdeas.filter(i => i.id !== idea.id);
         
-        if (ideaElementUnderMouse) {
-          const targetIdeaId = (ideaElementUnderMouse as HTMLElement).dataset.ideaId;
-          const previousTargetId = dragHoverTargetId;
+        // Convert ideas to collision rectangles
+        const draggedRect = ideaToRect(idea);
+        const otherRects = otherIdeas.map(ideaToRect);
+        
+        // Perform throttled collision detection
+        const collisionResult = collisionDetectorRef.current.checkCollision(
+          draggedRect,
+          otherRects,
+          0.1, // 10% overlap for touch detection
+          0.4  // 40% overlap for merge detection
+        );
+        
+        if (collisionResult) {
+          const { touchedIdeas: newTouchedIdeas, mergeCandidate } = collisionResult;
           
-          // Only process if we're hovering over a new target AND Command key is pressed
-          if (targetIdeaId && targetIdeaId !== previousTargetId) {
-            console.log(`🎯 Touch detected: ${idea.id} touching ${targetIdeaId}`);
+          // Update touched ideas for real-time edge creation
+          const previouslyTouched = Array.from(touchedIdeaIds);
+          const newlyTouched = newTouchedIdeas.filter(id => !previouslyTouched.includes(id));
+          const noLongerTouched = previouslyTouched.filter(id => !newTouchedIdeas.includes(id));
+          
+          // Create edges for newly touched ideas (automatic edge creation)
+          newlyTouched.forEach(targetId => {
+            console.log(`🎯 Touch detected: ${idea.id} touching ${targetId} (auto-edge creation)`);
+            addTouchedIdeaId(targetId);
             
-            // Only create/delete edges if Command key is pressed
-            if (isCommandKeyPressed) {
-              console.log('✅ Command pressed - processing edge creation/deletion');
-              // Check if edge already exists
+            // Create edge automatically (not requiring Command key for Task 13)
+            const existingEdge = Object.values(edges).find(
+              edge => edge.brain_dump_id === currentBrainDumpId && 
+                      edge.parent_id === idea.id && 
+                      edge.child_id === targetId
+            );
+            
+            if (!existingEdge) {
+              addEdge(idea.id, targetId, 'related_to');
+              console.log(`✅ Auto-created edge from ${idea.id} to ${targetId}`);
+            }
+          });
+          
+          // Clean up edges for ideas no longer touched (if desired)
+          // For now, we keep edges once created during drag for better UX
+          
+          // Update merge candidate state
+          if (mergeCandidate !== dropTargetIdeaId) {
+            setDropTargetIdeaId(mergeCandidate);
+            setDragOverlapDetected(mergeCandidate !== null);
+            
+            if (mergeCandidate) {
+              console.log(`🔀 Merge candidate detected: ${idea.id} can merge with ${mergeCandidate}`);
+            }
+          }
+        }
+        
+        // Legacy command-based edge creation/deletion (for manual control)
+        if (isCommandKeyPressed) {
+          const elementsUnderMouse = document.elementsFromPoint(e.clientX, e.clientY);
+          const ideaElementUnderMouse = elementsUnderMouse.find((el) => {
+            const element = el as HTMLElement;
+            return element.dataset?.ideaId && element.dataset.ideaId !== idea.id;
+          });
+          
+          if (ideaElementUnderMouse) {
+            const targetIdeaId = (ideaElementUnderMouse as HTMLElement).dataset.ideaId;
+            const previousTargetId = dragHoverTargetId;
+            
+            if (targetIdeaId && targetIdeaId !== previousTargetId) {
+              console.log(`⌘ Manual command override: ${idea.id} touching ${targetIdeaId}`);
+              
               const existingEdge = Object.values(edges).find(
                 edge => edge.brain_dump_id === currentBrainDumpId && 
                         edge.parent_id === idea.id && 
@@ -422,33 +497,44 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
               );
               
               if (existingEdge) {
-                // Delete existing edge
                 deleteEdge(existingEdge.id);
-                console.log(`🗑️ Removed edge from ${idea.id} to ${targetIdeaId}`);
+                console.log(`🗑️ Manual removal: edge from ${idea.id} to ${targetIdeaId}`);
               } else {
-                // Create new edge
                 addEdge(idea.id, targetIdeaId, 'related_to');
-                console.log(`✅ Created edge from ${idea.id} to ${targetIdeaId}`);
+                console.log(`✅ Manual creation: edge from ${idea.id} to ${targetIdeaId}`);
               }
             }
+            
+            setDragHoverTargetId(targetIdeaId || null);
+          } else {
+            setDragHoverTargetId(null);
           }
-          
-          setDragHoverTargetId(targetIdeaId || null);
-        } else {
-          setDragHoverTargetId(null);
         }
       }
     };
 
-    const handleDocumentMouseUp = () => {
+    const handleDocumentMouseUp = async () => {
       setIsMouseDown(false);
       setIsDragging(false);
       
-      // Clear drag state if this was the dragged idea (no drop-based edge creation)
+      // Task 13: Handle idea merging and cleanup
       if (draggedIdeaId === idea.id) {
-        setDraggedIdeaId(null);
-        setDragHoverTargetId(null);
         console.log('🏁 Finished dragging idea:', idea.id);
+        
+        // Check if we should merge ideas
+        if (isDragOverlapDetected && dropTargetIdeaId) {
+          try {
+            console.log(`🔀 Executing merge: ${idea.id} → ${dropTargetIdeaId}`);
+            await mergeIdeas(idea.id, dropTargetIdeaId);
+            console.log('✅ Merge completed successfully');
+          } catch (error) {
+            console.error('❌ Merge failed:', error);
+            // Could show error notification here
+          }
+        }
+        
+        // Reset all drag state
+        resetDragState();
         
         // Hide shortcut assistant
         hideShortcutAssistant();
@@ -462,7 +548,7 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
       document.removeEventListener('mousemove', handleDocumentMouseMove);
       document.removeEventListener('mouseup', handleDocumentMouseUp);
     };
-  }, [isMouseDown, isDragging, viewport.zoom, idea.id, updateIdeaPosition, isSelected, selectedIdeaIds, draggedIdeaId, dragHoverTargetId, setDraggedIdeaId, setDragHoverTargetId, edges, currentBrainDumpId, addEdge, deleteEdge, isCommandKeyPressed, hideShortcutAssistant, ideas, showShortcutAssistant]);
+  }, [isMouseDown, isDragging, viewport.zoom, idea.id, updateIdeaPosition, isSelected, selectedIdeaIds, draggedIdeaId, dragHoverTargetId, setDraggedIdeaId, setDragHoverTargetId, edges, currentBrainDumpId, addEdge, deleteEdge, isCommandKeyPressed, hideShortcutAssistant, ideas, showShortcutAssistant, touchedIdeaIds, dropTargetIdeaId, isDragOverlapDetected, dragCreateEdgesMode, addTouchedIdeaId, clearTouchedIdeaIds, setDropTargetIdeaId, setDragOverlapDetected, resetDragState, mergeIdeas]);
   
   const handleConnectionHandleMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -506,6 +592,8 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const isGenerating = idea.state === 'generating';
 
   const baseBorder = isSelected ? '4px solid #3b82f6' // Blue border for selection
+    : isMergeCandidate ? '4px solid #e11d48' // Red border for merge candidate
+    : isTouched ? '3px solid #06b6d4' // Cyan border for touched ideas  
     : isDraggedOver ? '3px solid #10b981'
     : isParent ? '2px solid #d97706' 
     : isGenerating ? '3px solid transparent' // Transparent to show gradient behind
@@ -517,13 +605,19 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   const selectionShadow = isSelected
     ? '0 0 20px rgba(59, 130, 246, 0.6), 0 10px 15px -3px rgba(0, 0, 0, 0.1)'
     : undefined;
+  const mergeCandidateShadow = isMergeCandidate
+    ? '0 0 25px rgba(225, 29, 72, 0.8), 0 10px 20px -3px rgba(0, 0, 0, 0.2)'
+    : undefined;
+  const touchedShadow = isTouched && !isMergeCandidate && !isSelected
+    ? '0 0 15px rgba(6, 182, 212, 0.6), 0 5px 10px -3px rgba(0, 0, 0, 0.1)'
+    : undefined;
   const dragOverShadow = isDraggedOver
     ? '0 0 20px rgba(16, 185, 129, 0.6), 0 10px 15px -3px rgba(0, 0, 0, 0.1)'
     : undefined;
-  const parentShadow = isParent && !isSelected && !isDraggedOver
+  const parentShadow = isParent && !isSelected && !isDraggedOver && !isTouched && !isMergeCandidate
     ? '0 0 15px rgba(217, 119, 6, 0.4), 0 5px 10px -3px rgba(0, 0, 0, 0.1)'
     : undefined;
-  const combinedShadow = [selectionShadow, dragOverShadow, parentShadow, glowShadow].filter(Boolean).join(', ') || undefined;
+  const combinedShadow = [selectionShadow, mergeCandidateShadow, touchedShadow, dragOverShadow, parentShadow, glowShadow].filter(Boolean).join(', ') || undefined;
   
   // Ensure both parent and child nodes have similar backgrounds for consistency
   const isDarkMode = theme === 'dark';
@@ -531,9 +625,13 @@ export default function IdeaNode({ idea }: IdeaNodeProps) {
   
   const backgroundStyle = isSelected
       ? 'rgba(59, 130, 246, 0.05)' // Blue background for selection
+      : isMergeCandidate
+        ? 'rgba(225, 29, 72, 0.08)' // Red background for merge candidate
+      : isTouched
+        ? 'rgba(6, 182, 212, 0.05)' // Cyan background for touched ideas
       : isDraggedOver
         ? 'rgba(16, 185, 129, 0.05)'
-        : isParent && !isSelected && !isDraggedOver
+        : isParent && !isSelected && !isDraggedOver && !isTouched && !isMergeCandidate
           ? (isDarkMode ? 'rgba(217, 119, 6, 0.05)' : 'rgba(217, 119, 6, 0.05)')
           : glowOpacity > 0
             ? `rgba(59, 130, 246, ${0.08 * glowOpacity})`

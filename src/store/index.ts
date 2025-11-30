@@ -623,8 +623,10 @@ export const useStoreActions = () => {
 
         console.log(`Duplicated ${duplicatedIdeas.length} nodes and ${duplicatedEdges.length} edges`)
 
-        // Select the newly duplicated nodes
+        // Clear ALL selections first, then select ONLY duplicated items
+        store.clearSelection()
         store.setSelection(duplicatedIdeas)
+        store.setEdgeSelection(duplicatedEdges)
 
       } catch (error) {
         console.error('Failed to duplicate selected nodes:', error)

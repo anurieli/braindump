@@ -11,8 +11,9 @@ import InputBox, { InputBoxHandle } from '@/components/InputBox'
 import SidePanel from '@/components/SidePanel'
 import SettingsModal from '@/components/SettingsModal'
 import ShortcutsPanel from '@/components/ShortcutsPanel'
+import ShortcutsHelpModal from '@/components/ShortcutsHelpModal'
 import ErrorBoundary from '@/components/ErrorBoundary'
-import { useGlobalKeyboardShortcuts } from '@/hooks/useGlobalKeyboardShortcuts'
+import { useAppHotkeys } from '@/hooks/useAppHotkeys'
 
 export default function Home() {
   const router = useRouter()
@@ -28,8 +29,8 @@ export default function Home() {
   const loadEdgeTypes = useStore(state => state.loadEdgeTypes)
   const switchBrainDump = useStore(state => state.switchBrainDump)
 
-  // Initialize global keyboard shortcuts
-  useGlobalKeyboardShortcuts()
+  // Task 14: Initialize centralized keyboard shortcuts
+  useAppHotkeys({ debug: false })
   
   useEffect(() => {
     const initializeApp = async () => {
@@ -135,6 +136,7 @@ export default function Home() {
 
         {/* Modals */}
         <SettingsModal />
+        <ShortcutsHelpModal />
         
         {/* Shortcuts Panel - Always visible in top right */}
         <ShortcutsPanel />

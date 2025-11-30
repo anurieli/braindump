@@ -2,6 +2,7 @@
 
 import { useHotkeys } from 'react-hotkeys-hook'
 import { useStore, useStoreActions } from '@/store'
+import { useGlobalUndoRedo } from '@/hooks/useUndoRedo'
 import { debugKeyboard } from '@/lib/undo-debug'
 
 export function useGlobalKeyboardShortcuts() {
@@ -18,8 +19,8 @@ export function useGlobalKeyboardShortcuts() {
   // Store actions
   const { duplicateSelectedNodes } = useStoreActions()
 
-  // Undo/Redo actions
-  const { undo, redo, canUndo, canRedo } = useStoreActions()
+  // Use centralized undo/redo handler
+  const { canUndo, canRedo, undo, redo } = useGlobalUndoRedo()
 
   // Ctrl+N: Create new brain dump
   useHotkeys('ctrl+n', (event) => {
@@ -63,11 +64,9 @@ export function useGlobalKeyboardShortcuts() {
 
   // Ctrl+Z / Cmd+Z: Undo (cross-platform)
   useHotkeys('ctrl+z, meta+z', async (event) => {
-    debugKeyboard('Ctrl/Cmd+Z', 'Undo', canUndo())
+    debugKeyboard('Ctrl/Cmd+Z', 'Undo', canUndo)
     event.preventDefault()
-    if (canUndo()) {
-      await undo()
-    }
+    await undo()
   }, {
     enableOnFormTags: true, // Allow undo in input fields
     description: 'Undo last action'
@@ -75,11 +74,9 @@ export function useGlobalKeyboardShortcuts() {
 
   // Ctrl+Shift+Z / Cmd+Shift+Z: Redo (cross-platform)
   useHotkeys('ctrl+shift+z, meta+shift+z', async (event) => {
-    debugKeyboard('Ctrl/Cmd+Shift+Z', 'Redo', canRedo())
+    debugKeyboard('Ctrl/Cmd+Shift+Z', 'Redo', canRedo)
     event.preventDefault()
-    if (canRedo()) {
-      await redo()
-    }
+    await redo()
   }, {
     enableOnFormTags: true, // Allow redo in input fields
     description: 'Redo last undone action'

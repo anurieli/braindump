@@ -144,7 +144,7 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
   
   // Auto-relate state
   const isAutoRelateMode = useStore(state => state.isAutoRelateMode)
-  const { addEdge, setAutoRelateMode, clearAutoRelateMode, savePreferencesToDB } = useStoreActions()
+  const { addIdeaWithEdge, setAutoRelateMode, clearAutoRelateMode, savePreferencesToDB } = useStoreActions()
   
   // Derive pending parent from selection: only when auto-relate is ON and exactly 1 node is selected
   const selectedIdeaIdsArray = Array.from(selectedIdeaIds)
@@ -304,24 +304,54 @@ const InputBox = forwardRef<InputBoxHandle>((props, ref) => {
       // Find a non-overlapping position using smart placement
       const { x, y } = findPosition(ideas, centerX, centerY, placementAnchor, 220, currentBrainDumpId)
       
-      // Call addIdea with text and position (handles database insertion)
-      const ideaId = await addIdea((inputValue || '').trim(), { x, y })
+      let ideaId: string
       
-      // Auto-relate mode logic
-      if (isAutoRelateMode && ideaId) {
-        // Only create edge if there's a pending parent (selected node)
-        if (pendingParentId) {
+      // Auto-relate mode logic: use atomic operation when creating connected ideas
+      if (isAutoRelateMode && pendingParentId) {
+        console.log(`🔗 Auto-relate mode: Creating idea with edge from ${pendingParentId}`)
+        
+        // Safety check: ensure parent still exists (could have been deleted)
+        const parentStillExists = Object.values(ideas).some(idea => 
+          idea.id === pendingParentId && 
+          idea.brain_dump_id === currentBrainDumpId
+        )
+        
+        if (!parentStillExists) {
+          console.warn(`⚠️ Pending parent ${pendingParentId} no longer exists, clearing auto-relate mode`)
+          clearAutoRelateMode()
+          // Fall back to regular idea creation
+          ideaId = await addIdea((inputValue || '').trim(), { x, y })
+        } else {
           try {
-            await addEdge(pendingParentId, ideaId, 'related_to')
-            console.log(`✅ Created auto-relate connection: ${pendingParentId} -> ${ideaId}`)
+            // Use atomic addIdeaWithEdge for proper undo/redo functionality
+            const result = await addIdeaWithEdge(
+              (inputValue || '').trim(), 
+              { x, y }, 
+              pendingParentId, 
+              'related_to'  // Use 'related_to' which matches the database edge type
+            )
+            ideaId = result.ideaId
+            console.log(`✅ Created atomic auto-relate operation: ${pendingParentId} -> ${ideaId} (edge: ${result.edgeId})`)
           } catch (error) {
-            console.error('❌ Failed to create auto-relate edge:', error)
+            console.error('❌ Failed to create auto-relate idea with edge:', error)
+            
+            // Check if error is due to deleted parent and clear auto-relate mode
+            if (error instanceof Error && error.message.includes('does not exist')) {
+              console.warn('🔄 Parent was deleted during operation, clearing auto-relate mode')
+              clearAutoRelateMode()
+            }
+            
+            // Fallback to regular idea creation if atomic operation fails
+            ideaId = await addIdea((inputValue || '').trim(), { x, y })
           }
         }
         
         // Always select the newly created idea (making it the pending parent for the next node)
         console.log('🎯 Selecting newly created idea as pending parent:', ideaId)
         setSelection([ideaId])
+      } else {
+        // Regular mode or no parent: use standard addIdea
+        ideaId = await addIdea((inputValue || '').trim(), { x, y })
       }
 
       // Create URL attachments in background

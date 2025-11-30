@@ -618,16 +618,6 @@ export default function AttachmentNode({ idea, attachment }: AttachmentNodeProps
 
     // PDF preview (with thumbnail or fallback representation)
     if (fileCategory === 'pdf') {
-      // Debug logging
-      console.log('🔍 PDF Debug Info:', {
-        filename,
-        fileCategory,
-        thumbnailUrl: metadata.thumbnailUrl,
-        thumbnailError,
-        mimeType,
-        metadata: metadata
-      });
-      
       return (
         <div className="w-full h-full bg-gray-50 rounded-md overflow-hidden">
           <div className="relative w-full h-full">

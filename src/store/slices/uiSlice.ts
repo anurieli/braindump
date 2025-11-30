@@ -34,6 +34,12 @@ export interface UiSlice {
   // Drag state
   draggedIdeaId: string | null
   dragHoverTargetId: string | null
+  
+  // Task 13: Enhanced drag state for real-time edge creation and idea merging
+  touchedIdeaIds: Set<string>
+  dropTargetIdeaId: string | null
+  isDragOverlapDetected: boolean
+  dragCreateEdgesMode: boolean
 
   // Quick editor state
   quickEditor: {
@@ -58,6 +64,13 @@ export interface UiSlice {
   // Auto-relate mode state
   isAutoRelateMode: boolean
   autoRelateParentId: string | null
+
+  // Task 14: Clipboard state for keyboard shortcuts
+  clipboardState: {
+    items: string[]
+    operation: 'copy' | 'cut' | null
+    timestamp: number | null
+  }
 
   // Performance settings
   enableAnimations: boolean
@@ -103,6 +116,14 @@ export interface UiSlice {
   setDraggedIdeaId: (id: string | null) => void
   setDragHoverTargetId: (id: string | null) => void
   
+  // Task 13: Enhanced drag actions
+  addTouchedIdeaId: (id: string) => void
+  clearTouchedIdeaIds: () => void
+  setDropTargetIdeaId: (id: string | null) => void
+  setDragOverlapDetected: (detected: boolean) => void
+  setDragCreateEdgesMode: (enabled: boolean) => void
+  resetDragState: () => void
+  
   // Quick editor actions
   showQuickEditor: (x: number, y: number, initialText?: string, pendingConnection?: { sourceId: string; targetPosition: { x: number; y: number } }) => void
   hideQuickEditor: () => void
@@ -121,6 +142,12 @@ export interface UiSlice {
   // Auto-relate mode actions
   setAutoRelateMode: (enabled: boolean, parentId?: string) => void
   clearAutoRelateMode: () => void
+  
+  // Task 14: Clipboard actions
+  copyToClipboard: (ideaIds: string[]) => void
+  cutToClipboard: (ideaIds: string[]) => void
+  pasteFromClipboard: (position: { x: number; y: number }) => Promise<void>
+  clearClipboard: () => void
   
   // Performance
   setRenderQuality: (quality: 'low' | 'medium' | 'high') => void
@@ -165,6 +192,12 @@ export const createUiSlice: StateCreator<
   // Drag state
   draggedIdeaId: null,
   dragHoverTargetId: null,
+  
+  // Task 13: Enhanced drag state
+  touchedIdeaIds: new Set<string>(),
+  dropTargetIdeaId: null,
+  isDragOverlapDetected: false,
+  dragCreateEdgesMode: true,
 
   // Quick editor state
   quickEditor: null,
@@ -178,6 +211,13 @@ export const createUiSlice: StateCreator<
   // Auto-relate mode state
   isAutoRelateMode: false,
   autoRelateParentId: null,
+
+  // Task 14: Clipboard state
+  clipboardState: {
+    items: [],
+    operation: null,
+    timestamp: null,
+  },
 
   // Performance settings
   enableAnimations: true,
@@ -378,6 +418,41 @@ export const createUiSlice: StateCreator<
   setDragHoverTargetId: (id: string | null) => {
     set({ dragHoverTargetId: id })
   },
+  
+  // Task 13: Enhanced drag actions
+  addTouchedIdeaId: (id: string) => {
+    set(state => {
+      const newTouched = new Set(state.touchedIdeaIds)
+      newTouched.add(id)
+      return { touchedIdeaIds: newTouched }
+    })
+  },
+  
+  clearTouchedIdeaIds: () => {
+    set({ touchedIdeaIds: new Set<string>() })
+  },
+  
+  setDropTargetIdeaId: (id: string | null) => {
+    set({ dropTargetIdeaId: id })
+  },
+  
+  setDragOverlapDetected: (detected: boolean) => {
+    set({ isDragOverlapDetected: detected })
+  },
+  
+  setDragCreateEdgesMode: (enabled: boolean) => {
+    set({ dragCreateEdgesMode: enabled })
+  },
+  
+  resetDragState: () => {
+    set({
+      draggedIdeaId: null,
+      dragHoverTargetId: null,
+      touchedIdeaIds: new Set<string>(),
+      dropTargetIdeaId: null,
+      isDragOverlapDetected: false
+    })
+  },
 
   // Quick editor actions
   showQuickEditor: (x: number, y: number, initialText = '', pendingConnection?: { sourceId: string; targetPosition: { x: number; y: number } }) => {
@@ -445,6 +520,84 @@ export const createUiSlice: StateCreator<
     set({
       isAutoRelateMode: false,
       autoRelateParentId: null
+    })
+  },
+
+  // Task 14: Clipboard actions
+  copyToClipboard: (ideaIds: string[]) => {
+    set({
+      clipboardState: {
+        items: [...ideaIds],
+        operation: 'copy',
+        timestamp: Date.now()
+      }
+    })
+  },
+
+  cutToClipboard: (ideaIds: string[]) => {
+    set({
+      clipboardState: {
+        items: [...ideaIds],
+        operation: 'cut',
+        timestamp: Date.now()
+      }
+    })
+  },
+
+  pasteFromClipboard: async (position: { x: number; y: number }) => {
+    const state = get()
+    const { clipboardState } = state
+    
+    if (!clipboardState.items.length || !state.currentBrainDumpId) return
+    
+    try {
+      // Dynamic import to access ideas slice methods
+      const { addIdea, deleteIdea } = await import('../index')
+      const store = (await import('../index')).useStore.getState()
+      
+      let offsetIndex = 0
+      
+      for (const ideaId of clipboardState.items) {
+        const originalIdea = store.ideas[ideaId]
+        if (!originalIdea) continue
+        
+        // Calculate offset position for multiple items
+        const offsetX = position.x + (offsetIndex * 30)
+        const offsetY = position.y + (offsetIndex * 30)
+        
+        // Create new idea with copied content
+        await store.addIdea(originalIdea.text || '', { x: offsetX, y: offsetY })
+        
+        offsetIndex++
+      }
+      
+      // If it was a cut operation, delete the original ideas
+      if (clipboardState.operation === 'cut') {
+        for (const ideaId of clipboardState.items) {
+          await store.deleteIdea(ideaId)
+        }
+        
+        // Clear clipboard after cut operation
+        set({
+          clipboardState: {
+            items: [],
+            operation: null,
+            timestamp: null
+          }
+        })
+      }
+    } catch (error) {
+      console.error('Failed to paste from clipboard:', error)
+    }
+  },
+
+  clearClipboard: () => {
+    set({
+      clipboardState: {
+        items: [],
+        operation: null,
+        timestamp: null
+      }
     })
   },
 

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useStore, undo, redo, canUndo, canRedo } from '@/store'
+import { useStore } from '@/store'
+import { useUndoRedo } from '@/hooks/useUndoRedo'
 import { Undo2, Redo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -9,7 +10,7 @@ export function KeyboardShortcutsButton() {
   const openModal = useStore(state => state.openModal)
 
   const handleOpenShortcuts = () => {
-    openModal('shortcuts')
+    openModal('shortcuts-help')
   }
 
   return (
@@ -28,8 +29,6 @@ export function KeyboardShortcutsButton() {
 export default function ControlPanel() {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
-  const [canUndoState, setCanUndoState] = useState(false)
-  const [canRedoState, setCanRedoState] = useState(false)
   
   // Store selectors
   const theme = useStore(state => state.theme)
@@ -38,15 +37,8 @@ export default function ControlPanel() {
   const toggleGrid = useStore(state => state.toggleGrid)
   const openModal = useStore(state => state.openModal)
   
-  // Track ideas/edges changes to update undo/redo button states
-  const ideas = useStore(state => state.ideas)
-  const edges = useStore(state => state.edges)
-  
-  // Update undo/redo states when ideas/edges change
-  useEffect(() => {
-    setCanUndoState(canUndo())
-    setCanRedoState(canRedo())
-  }, [ideas, edges])
+  // Use centralized undo/redo hook
+  const { canUndo, canRedo, undo, redo, isPerformingAction } = useUndoRedo()
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -77,19 +69,11 @@ export default function ControlPanel() {
   }
 
   const handleUndo = async () => {
-    if (canUndo()) {
-      await undo()
-      setCanUndoState(canUndo())
-      setCanRedoState(canRedo())
-    }
+    await undo()
   }
 
   const handleRedo = async () => {
-    if (canRedo()) {
-      await redo()
-      setCanUndoState(canUndo())
-      setCanRedoState(canRedo())
-    }
+    await redo()
   }
 
   return (
@@ -100,7 +84,7 @@ export default function ControlPanel() {
           size="icon"
           variant="ghost"
           onClick={handleUndo}
-          disabled={!canUndoState}
+          disabled={!canUndo || isPerformingAction}
           title="Undo (⌘Z)"
           className="h-8 w-8"
         >
@@ -110,7 +94,7 @@ export default function ControlPanel() {
           size="icon"
           variant="ghost"
           onClick={handleRedo}
-          disabled={!canRedoState}
+          disabled={!canRedo || isPerformingAction}
           title="Redo (⌘⇧Z)"
           className="h-8 w-8"
         >

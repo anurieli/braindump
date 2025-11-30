@@ -103,6 +103,7 @@ export interface AttachmentMetadata {
   isBase64?: boolean;
   textContent?: string; // For text file previews
   pageCount?: number; // For PDF documents
+  currentPage?: number; // Current page being viewed (for PDFs)
   userPreferences?: {
     width?: number;
     height?: number;
@@ -113,6 +114,11 @@ export interface AttachmentMetadata {
     image?: string;
     favicon?: string;
   };
+  // Enhanced metadata for rich previews
+  fileName?: string;
+  originalUrl?: string; // For web nodes
+  domain?: string; // For web nodes
+  uploading?: boolean; // During file upload
   [key: string]: unknown;
 }
 
@@ -161,13 +167,22 @@ export interface IdeaDB {
   position_y: number;
   width: number;
   height: number;
-  type: 'text' | 'attachment';
+  type: 'text' | 'attachment' | 'document' | 'web';
   state: 'generating' | 'ready' | 'error';
   session_id?: string;
   embedding?: number[];
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  // Rich preview fields for document/web nodes
+  url?: string;
+  nodeTitle?: string;
+  nodeDescription?: string;
+  previewImageUrl?: string;
+  fileType?: string;
+  // PDF navigation fields
+  currentPage?: number;
+  totalPages?: number;
 }
 
 export interface EdgeDB {
@@ -181,4 +196,4 @@ export interface EdgeDB {
   updated_at: string;
 }
 
-export type Modal = 'settings' | 'shortcuts' | 'idea-details' | 'edge-creation' | 'help' | null;
+export type Modal = 'settings' | 'shortcuts' | 'shortcuts-help' | 'idea-details' | 'edge-creation' | 'help' | null;

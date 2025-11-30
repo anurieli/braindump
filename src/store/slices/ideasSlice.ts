@@ -27,9 +27,13 @@ export interface IdeasSlice {
   updateIdeaPosition: (id: string, position: { x: number, y: number }) => void
   updateIdeaDimensions: (id: string, dimensions: { width: number, height: number }) => void
   updateAttachmentMetadata: (id: string, metadata: Partial<AttachmentMetadata>) => Promise<void>
+  setIdeaCurrentPage: (id: string, page: number) => Promise<void>
   deleteIdea: (id: string) => Promise<void>
   selectIdea: (id: string | null) => void
   processIdeaAI: (id: string) => Promise<void>
+  
+  // Task 13: Idea merging functionality
+  mergeIdeas: (sourceId: string, targetId: string) => Promise<void>
 
   // Selectors
   getIdeasArray: () => Idea[]
@@ -194,7 +198,7 @@ export const createIdeasSlice: StateCreator<
         const typeExists = edgeTypes.some(et => et.name === edgeType)
         if (!typeExists) {
           console.warn(`Edge type '${edgeType}' not found in available types, using default`)
-          edgeType = 'relates-to'
+          edgeType = 'related_to'
         }
       }
 
@@ -238,10 +242,24 @@ export const createIdeasSlice: StateCreator<
 
         // Step 2: Create edge if parent is specified
         if (parentId) {
-          // Re-validate now that we have the actual child ID
-          const finalEdgeValidation = get().validateEdge(parentId, ideaId, edgeType)
-          if (!finalEdgeValidation.valid) {
-            throw new Error(`Failed to create edge: ${finalEdgeValidation.reason}`)
+          // Re-validate now that we have the actual child ID, but skip child existence check 
+          // since we just created it and haven't added it to local state yet
+          const parentExists = get().ideas[parentId]
+          if (!parentExists) {
+            throw new Error(`Failed to create edge: Parent idea ${parentId} does not exist`)
+          }
+          
+          // Check for self-reference
+          if (parentId === ideaId) {
+            throw new Error(`Failed to create edge: Cannot create edge to same idea`)
+          }
+          
+          // Check for duplicate edge
+          const existingEdge = Object.values(get().edges).find(
+            edge => edge.parent_id === parentId && edge.child_id === ideaId
+          )
+          if (existingEdge) {
+            throw new Error(`Failed to create edge: Edge already exists between these ideas`)
           }
 
           const { data: edgeData, error: edgeError } = await supabase
@@ -666,13 +684,6 @@ export const createIdeasSlice: StateCreator<
       return
     }
 
-    // Save history immediately before position update
-    console.log('💾 updateIdeaPosition: Saving history immediately before position update')
-    undoRedoManager.saveState({
-      ideas: currentState.ideas,
-      edges: currentState.edges
-    }, true)
-
     // Immediate local update for smooth dragging
     set(state => ({
       ideas: {
@@ -680,6 +691,13 @@ export const createIdeasSlice: StateCreator<
         [id]: { ...state.ideas[id], position_x: position.x, position_y: position.y }
       }
     }))
+
+    // Save history immediately AFTER position update so undo restores the previous position
+    console.log('💾 updateIdeaPosition: Saving history immediately after position update')
+    undoRedoManager.saveState({
+      ideas: get().ideas,
+      edges: get().edges
+    }, true)
 
     // Debounced database update
     positionDebouncer.add(id, position.x, position.y)
@@ -727,6 +745,70 @@ export const createIdeasSlice: StateCreator<
         ideas: {
           ...state.ideas,
           [id]: { ...state.ideas[id], metadata: idea.metadata }
+        }
+      }))
+    }
+  },
+
+  setIdeaCurrentPage: async (id: string, page: number) => {
+    const currentState = get()
+    const idea = currentState.ideas[id]
+    
+    if (!idea) {
+      console.warn('Cannot set page for non-existent idea:', id)
+      return
+    }
+
+    const totalPages = idea.totalPages || (idea.metadata as any)?.pageCount || 1
+    
+    // Validate page number is within bounds
+    if (page < 1 || page > totalPages) {
+      console.warn(`Page ${page} is out of bounds for idea ${id} (1-${totalPages})`)
+      return
+    }
+
+    console.log(`📄 Setting idea ${id} to page ${page}/${totalPages}`)
+
+    // Update local state immediately
+    set(state => ({
+      ideas: {
+        ...state.ideas,
+        [id]: { 
+          ...state.ideas[id], 
+          currentPage: page,
+          metadata: {
+            ...state.ideas[id].metadata,
+            currentPage: page
+          }
+        }
+      }
+    }))
+
+    try {
+      // Update database with new current page
+      const { error } = await supabase
+        .from('ideas')
+        .update({ 
+          current_page: page,
+          metadata: {
+            ...idea.metadata,
+            currentPage: page
+          }
+        })
+        .eq('id', id)
+
+      if (error) throw error
+    } catch (error) {
+      console.error('Failed to update current page:', error)
+      // Revert optimistic update on error
+      set(state => ({
+        ideas: {
+          ...state.ideas,
+          [id]: { 
+            ...state.ideas[id], 
+            currentPage: idea.currentPage,
+            metadata: idea.metadata
+          }
         }
       }))
     }
@@ -824,6 +906,181 @@ export const createIdeasSlice: StateCreator<
         },
         isProcessing: { ...state.isProcessing, [id]: false }
       }))
+    }
+  },
+
+  // Task 13: Idea merging functionality
+  mergeIdeas: async (sourceId: string, targetId: string) => {
+    console.log('🔀 Merging ideas:', { sourceId, targetId });
+    
+    const currentState = get()
+    const sourceIdea = currentState.ideas[sourceId]
+    const targetIdea = currentState.ideas[targetId]
+    
+    if (!sourceIdea || !targetIdea) {
+      console.error('Cannot merge: source or target idea not found')
+      return
+    }
+    
+    if (sourceId === targetId) {
+      console.error('Cannot merge idea with itself')
+      return
+    }
+    
+    // Save history before merge for undo functionality
+    console.log('💾 mergeIdeas: Saving history before merge operation')
+    undoRedoManager.saveState({
+      ideas: currentState.ideas,
+      edges: currentState.edges
+    }, true)
+    
+    try {
+      // 1. Combine text content - target text + source text
+      const combinedText = `${targetIdea.text}\n\n${sourceIdea.text}`.trim()
+      
+      // 2. Determine merged position - keep target position
+      const mergedPosition = { 
+        x: targetIdea.position_x, 
+        y: targetIdea.position_y 
+      }
+      
+      // 3. Combine metadata if both are attachments
+      let combinedMetadata = targetIdea.metadata
+      if (sourceIdea.metadata && targetIdea.metadata) {
+        combinedMetadata = { ...targetIdea.metadata, ...sourceIdea.metadata }
+      } else if (sourceIdea.metadata) {
+        combinedMetadata = sourceIdea.metadata
+      }
+      
+      // 4. Update target idea with combined content
+      const { error: updateError } = await supabase
+        .from('ideas')
+        .update({
+          text: combinedText,
+          metadata: combinedMetadata,
+          state: 'generating' // Trigger AI re-processing for merged content
+        })
+        .eq('id', targetId)
+        
+      if (updateError) throw updateError
+      
+      // 5. Transfer any edges pointing TO the source idea to point to target instead
+      const edgesToUpdate = Object.values(currentState.edges).filter(
+        edge => edge.child_id === sourceId || edge.parent_id === sourceId
+      )
+      
+      for (const edge of edgesToUpdate) {
+        const newEdgeData: any = { ...edge }
+        
+        // Update child_id if it pointed to source
+        if (edge.child_id === sourceId) {
+          newEdgeData.child_id = targetId
+        }
+        
+        // Update parent_id if it pointed to source  
+        if (edge.parent_id === sourceId) {
+          newEdgeData.parent_id = targetId
+        }
+        
+        // Skip if this would create a self-reference
+        if (newEdgeData.parent_id === newEdgeData.child_id) {
+          // Delete this edge instead of updating
+          await supabase.from('edges').delete().eq('id', edge.id)
+          continue
+        }
+        
+        // Check if an equivalent edge already exists to avoid duplicates
+        const duplicateExists = Object.values(currentState.edges).some(
+          existingEdge => existingEdge.id !== edge.id &&
+            existingEdge.parent_id === newEdgeData.parent_id &&
+            existingEdge.child_id === newEdgeData.child_id &&
+            existingEdge.type === newEdgeData.type
+        )
+        
+        if (duplicateExists) {
+          // Delete this edge to avoid duplicates
+          await supabase.from('edges').delete().eq('id', edge.id)
+        } else {
+          // Update the edge
+          await supabase
+            .from('edges')
+            .update({
+              parent_id: newEdgeData.parent_id,
+              child_id: newEdgeData.child_id
+            })
+            .eq('id', edge.id)
+        }
+      }
+      
+      // 6. Transfer any attachments from source to target idea
+      const { error: attachmentError } = await supabase
+        .from('attachments')
+        .update({ idea_id: targetId })
+        .eq('idea_id', sourceId)
+      
+      if (attachmentError) {
+        console.warn('Failed to transfer attachments:', attachmentError)
+      }
+      
+      // 7. Delete the source idea (this will cascade delete remaining edges)
+      const { error: deleteError } = await supabase
+        .from('ideas')
+        .delete()
+        .eq('id', sourceId)
+      
+      if (deleteError) throw deleteError
+      
+      // 8. Update local state to reflect the merge
+      set(state => {
+        const newIdeas = { ...state.ideas }
+        
+        // Remove source idea
+        delete newIdeas[sourceId]
+        
+        // Update target idea
+        newIdeas[targetId] = {
+          ...newIdeas[targetId],
+          text: combinedText,
+          metadata: combinedMetadata,
+          state: 'generating'
+        }
+        
+        // Update/remove edges as needed
+        const newEdges = { ...state.edges }
+        Object.keys(newEdges).forEach(edgeId => {
+          const edge = newEdges[edgeId]
+          if (edge.child_id === sourceId || edge.parent_id === sourceId) {
+            // This edge was already handled in the database update above
+            // Remove from local state if it was deleted, update if it was transferred
+            if (edge.child_id === sourceId) edge.child_id = targetId
+            if (edge.parent_id === sourceId) edge.parent_id = targetId
+            
+            // Remove self-referencing edges
+            if (edge.parent_id === edge.child_id) {
+              delete newEdges[edgeId]
+            }
+          }
+        })
+        
+        return {
+          ideas: newIdeas,
+          edges: newEdges,
+          isProcessing: {
+            ...state.isProcessing,
+            [targetId]: true // Mark target for AI processing
+          }
+        }
+      })
+      
+      // 9. Trigger AI processing for the merged content
+      currentState.processIdeaAI(targetId)
+      
+      console.log('✅ Ideas merged successfully:', { sourceId, targetId })
+      
+    } catch (error) {
+      console.error('Failed to merge ideas:', error)
+      // Could add error state or toast notification here
+      throw error
     }
   },
 
