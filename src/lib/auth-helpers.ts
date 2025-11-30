@@ -55,10 +55,16 @@ export async function signIn(email: string, password: string): Promise<{ user: U
 
 export async function signInWithGoogle(): Promise<{ error: Error | null }> {
   try {
+    // Determine the correct redirect URL based on environment
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const redirectTo = baseUrl.includes('localhost') 
+      ? `${baseUrl}/` 
+      : `${baseUrl}/`;
+    
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/`,
+        redirectTo,
       },
     });
 
