@@ -206,7 +206,7 @@ export const createIdeasSlice: StateCreator<
       const needsAI = text.length >= 60
       const initialState = needsAI ? 'generating' : 'ready'
 
-      let ideaId: string
+      let ideaId: string | undefined = undefined
       let edgeId: string | undefined
       let ideaCreated = false
       let edgeCreated = false
@@ -642,7 +642,7 @@ export const createIdeasSlice: StateCreator<
         [id]: {
           ...state.ideas[id],
           text,
-          summary: skipAI ? null : state.ideas[id].summary,
+          summary: skipAI ? undefined : state.ideas[id].summary,
           state: skipAI ? 'ready' : 'generating'
         }
       },
@@ -656,7 +656,7 @@ export const createIdeasSlice: StateCreator<
       const updatePayload: Partial<Idea> = {
         text,
         state: skipAI ? 'ready' : 'generating',
-        ...(skipAI ? { summary: null } : {})
+        ...(skipAI ? { summary: undefined } : {})
       }
 
       const { error } = await supabase
@@ -821,7 +821,7 @@ export const createIdeasSlice: StateCreator<
     // Find all edges connected to this idea (they will be CASCADE deleted in DB)
     const connectedEdgeIds = Object.keys(get().edges).filter(edgeId => {
       const edge = get().edges[edgeId]
-      return edge.sourceId === id || edge.targetId === id
+      return edge.parent_id === id || edge.child_id === id
     })
     
     console.log(`🗑️ Deleting idea ${id} and ${connectedEdgeIds.length} connected edges`)

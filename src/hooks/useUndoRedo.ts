@@ -17,12 +17,12 @@ let undoRedoFunctions: {
 
 async function getUndoRedoFunctions() {
   if (!undoRedoFunctions) {
-    const module = await import('@/store')
+    const storeModule = await import('@/store')
     undoRedoFunctions = {
-      undo: module.undo,
-      redo: module.redo,
-      canUndo: module.canUndo,
-      canRedo: module.canRedo
+      undo: storeModule.undo,
+      redo: storeModule.redo,
+      canUndo: storeModule.canUndo,
+      canRedo: storeModule.canRedo
     }
   }
   return undoRedoFunctions
@@ -72,7 +72,7 @@ export function useUndoRedo() {
       undoDebugger.log('success', '✅ Centralized undo completed')
       return true
     } catch (error) {
-      undoDebugger.log('error', '❌ Centralized undo failed', { error: error.message })
+      undoDebugger.log('error', '❌ Centralized undo failed', { error: error instanceof Error ? error.message : String(error) })
       return false
     } finally {
       setIsPerformingAction(false)
@@ -104,7 +104,7 @@ export function useUndoRedo() {
       undoDebugger.log('success', '✅ Centralized redo completed')
       return true
     } catch (error) {
-      undoDebugger.log('error', '❌ Centralized redo failed', { error: error.message })
+      undoDebugger.log('error', '❌ Centralized redo failed', { error: error instanceof Error ? error.message : String(error) })
       return false
     } finally {
       setIsPerformingAction(false)

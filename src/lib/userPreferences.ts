@@ -133,7 +133,10 @@ export async function updateGridPreference(
   userId: string, 
   gridSettings: Partial<UserPreferences['gridSettings']>
 ): Promise<void> {
-  return updateUserPreferences(userId, { gridSettings })
+  const currentPrefs = await getUserPreferences(userId)
+  return updateUserPreferences(userId, { 
+    gridSettings: { ...currentPrefs.gridSettings, ...gridSettings }
+  })
 }
 
 /**
@@ -143,5 +146,8 @@ export async function updateUIPreference(
   userId: string, 
   ui: Partial<UserPreferences['ui']>
 ): Promise<void> {
-  return updateUserPreferences(userId, { ui })
+  const currentPrefs = await getUserPreferences(userId)
+  return updateUserPreferences(userId, { 
+    ui: { ...currentPrefs.ui, ...ui }
+  })
 }

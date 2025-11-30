@@ -9,7 +9,7 @@ export function brainDumpFromDB(db: BrainDumpDB, ideas: IdeaDB[], edges: EdgeDB[
       idea.id,
       {
         id: idea.id,
-        content: idea.content,
+        content: idea.text,
         x: idea.position_x,
         y: idea.position_y,
         width: idea.width,

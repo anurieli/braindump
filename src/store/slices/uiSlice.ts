@@ -547,18 +547,17 @@ export const createUiSlice: StateCreator<
   pasteFromClipboard: async (position: { x: number; y: number }) => {
     const state = get()
     const { clipboardState } = state
+    const fullState = get() as any // Cast to access all slices
     
-    if (!clipboardState.items.length || !state.currentBrainDumpId) return
+    if (!clipboardState.items.length || !fullState.currentBrainDumpId) return
     
     try {
-      // Dynamic import to access ideas slice methods
-      const { addIdea, deleteIdea } = await import('../index')
-      const store = (await import('../index')).useStore.getState()
+      // Use fullState variable that was already defined above
       
       let offsetIndex = 0
       
       for (const ideaId of clipboardState.items) {
-        const originalIdea = store.ideas[ideaId]
+        const originalIdea = fullState.ideas[ideaId]
         if (!originalIdea) continue
         
         // Calculate offset position for multiple items
@@ -566,7 +565,7 @@ export const createUiSlice: StateCreator<
         const offsetY = position.y + (offsetIndex * 30)
         
         // Create new idea with copied content
-        await store.addIdea(originalIdea.text || '', { x: offsetX, y: offsetY })
+        await fullState.addIdea(originalIdea.text || '', { x: offsetX, y: offsetY })
         
         offsetIndex++
       }
@@ -574,7 +573,7 @@ export const createUiSlice: StateCreator<
       // If it was a cut operation, delete the original ideas
       if (clipboardState.operation === 'cut') {
         for (const ideaId of clipboardState.items) {
-          await store.deleteIdea(ideaId)
+          await fullState.deleteIdea(ideaId)
         }
         
         // Clear clipboard after cut operation

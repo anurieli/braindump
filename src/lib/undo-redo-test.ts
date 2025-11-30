@@ -31,7 +31,7 @@ class UndoRedoTester {
       console.log(`✅ ${testName}: PASSED`)
       return result
     } catch (error) {
-      this.results.push({ testName, passed: false, error: error.message })
+      this.results.push({ testName, passed: false, error: error instanceof Error ? error.message : String(error) })
       console.error(`❌ ${testName}: FAILED`, error)
       return false
     }
@@ -93,7 +93,7 @@ class UndoRedoTester {
         throw new Error('Idea still exists after undo')
       }
 
-      undoDebugger.endOperation(true, { idealId, initialState, afterCreate, afterUndo })
+      undoDebugger.endOperation(true, { ideaId, initialState, afterCreate, afterUndo })
       return true
     })
   }
@@ -504,6 +504,6 @@ export const undoRedoTester = new UndoRedoTester()
 
 // Make available globally for manual testing
 if (typeof window !== 'undefined') {
-  (window as any).runUndoRedoTests = () => undoRedoTester.runAllTests()
-  (window as any).getUndoRedoTestResults = () => undoRedoTester.getResults()
+  (window as any).runUndoRedoTests = async () => await undoRedoTester.runAllTests();
+  (window as any).getUndoRedoTestResults = () => undoRedoTester.getResults();
 }

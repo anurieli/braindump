@@ -289,7 +289,7 @@ export function withValidation(schema: ValidationSchema, handler: Function) {
       if (request.method === 'GET') {
         // Validate query parameters
         const url = new URL(request.url)
-        for (const [key, value] of url.searchParams.entries()) {
+        for (const [key, value] of Array.from(url.searchParams.entries())) {
           data[key] = value
         }
       } else if (request.headers.get('content-type')?.includes('application/json')) {
@@ -298,7 +298,7 @@ export function withValidation(schema: ValidationSchema, handler: Function) {
       } else if (request.headers.get('content-type')?.includes('multipart/form-data')) {
         // Validate form data
         const formData = await request.formData()
-        for (const [key, value] of formData.entries()) {
+        for (const [key, value] of Array.from(formData.entries())) {
           data[key] = value
         }
       }

@@ -41,7 +41,7 @@ class UndoRedoDebugger {
     }
   }
 
-  private log(level: keyof typeof UndoRedoDebugger.prototype.colors, message: string, data?: any) {
+  log(level: keyof typeof UndoRedoDebugger.prototype.colors, message: string, data?: any) {
     if (!this.enabled) return
 
     const entry: DebugLogEntry = {

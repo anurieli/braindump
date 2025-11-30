@@ -83,7 +83,7 @@ export const runEmbeddingTask = async (
   return {
     data: embedding,
     model,
-    usage: buildUsage(task, response.usage?.prompt_tokens, response.usage?.completion_tokens),
+    usage: buildUsage(task, response.usage?.prompt_tokens, 0), // Embeddings don't have completion tokens
   }
 }
 

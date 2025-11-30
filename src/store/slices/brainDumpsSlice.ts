@@ -130,9 +130,9 @@ export const createBrainDumpsSlice: StateCreator<
     set({
       currentBrainDumpId: id,
       viewport: {
-        x: brainDump.viewport_x,
-        y: brainDump.viewport_y,
-        zoom: brainDump.viewport_zoom
+        x: brainDump.viewport_x ?? 0,
+        y: brainDump.viewport_y ?? 0,
+        zoom: brainDump.viewport_zoom ?? 1
       }
     })
     

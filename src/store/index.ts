@@ -250,13 +250,13 @@ export const saveCurrentState = () => {
 export const undo = async () => {
   undoDebugger.log('operation', '🔄 Undo called')
   const currentState = useStore.getState()
-  undoDebugger.log('state', '📊 Current state before undo', null, {
+  undoDebugger.log('state', '📊 Current state before undo', {
     ideasCount: Object.keys(currentState.ideas).length,
     edgesCount: Object.keys(currentState.edges).length
   })
 
   const previousState = undoRedoManager.undo()
-  undoDebugger.log('state', '📋 Previous state from history', null, previousState ? {
+  undoDebugger.log('state', '📋 Previous state from history', previousState ? {
     ideasCount: Object.keys(previousState.ideas).length,
     edgesCount: Object.keys(previousState.edges).length
   } : { state: 'null' })
@@ -375,13 +375,13 @@ export const undo = async () => {
 export const redo = async () => {
   undoDebugger.log('operation', '🔄 Redo called')
   const currentState = useStore.getState()
-  undoDebugger.log('state', '📊 Current state before redo', null, {
+  undoDebugger.log('state', '📊 Current state before redo', {
     ideasCount: Object.keys(currentState.ideas).length,
     edgesCount: Object.keys(currentState.edges).length
   })
 
   const nextState = undoRedoManager.redo()
-  undoDebugger.log('state', '📋 Next state from history', null, nextState ? {
+  undoDebugger.log('state', '📋 Next state from history', nextState ? {
     ideasCount: Object.keys(nextState.ideas).length,
     edgesCount: Object.keys(nextState.edges).length
   } : { state: 'null' })
@@ -596,7 +596,7 @@ export const useStoreActions = () => {
           duplicatedIdeas.push(newIdeaId)
 
           // Copy attachments if any
-          if (originalIdea.attachments && originalIdea.attachments.length > 0) {
+          if (originalIdea.type === 'attachment' || originalIdea.type === 'document') {
             // Note: Attachment duplication would need additional implementation
             // For now, we'll just duplicate the text-based idea
           }

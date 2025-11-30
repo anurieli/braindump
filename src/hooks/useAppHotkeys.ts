@@ -5,9 +5,8 @@
  * It provides a single place for hotkey registration and handling.
  */
 
-import { useHotkeys } from 'react-hotkeys-hook';
 import { useStore, undo, redo, canUndo, canRedo } from '@/store';
-import { SHORTCUTS, shouldAllowShortcut, type ShortcutDefinition } from '@/config/shortcuts';
+import { SHORTCUTS, shouldAllowShortcut } from '@/config/shortcuts';
 import { useCallback, useEffect } from 'react';
 
 // Types for hotkey handlers
@@ -201,20 +200,20 @@ export function useAppHotkeys(options: UseAppHotkeysOptions = {}) {
     // Navigation shortcuts
     ZOOM_IN: useCallback(() => {
       const newZoom = Math.min(viewport.zoom * 1.2, 3);
-      updateViewport({ zoom: newZoom });
+      updateViewport({ x: viewport.x, y: viewport.y, zoom: newZoom });
       if (debug) console.log('🔍 Zoom in via shortcut');
     }, [viewport, updateViewport, debug]),
 
     ZOOM_OUT: useCallback(() => {
       const newZoom = Math.max(viewport.zoom / 1.2, 0.2);
-      updateViewport({ zoom: newZoom });
+      updateViewport({ x: viewport.x, y: viewport.y, zoom: newZoom });
       if (debug) console.log('🔍 Zoom out via shortcut');
     }, [viewport, updateViewport, debug]),
 
     ZOOM_RESET: useCallback(() => {
-      updateViewport({ zoom: 1 });
+      updateViewport({ x: viewport.x, y: viewport.y, zoom: 1 });
       if (debug) console.log('🎯 Reset zoom via shortcut');
-    }, [updateViewport, debug]),
+    }, [viewport, updateViewport, debug]),
 
     FIT_TO_VIEW: useCallback(() => {
       if (!currentBrainDumpId) return;
@@ -290,52 +289,104 @@ export function useAppHotkeys(options: UseAppHotkeysOptions = {}) {
     }, [openModal, debug]),
   };
 
-  // Register all enabled shortcuts
-  Object.entries(SHORTCUTS).forEach(([shortcutId, shortcut]) => {
-    const handler = customHandlers[shortcutId as keyof typeof SHORTCUTS] || 
-                   defaultHandlers[shortcutId as keyof typeof SHORTCUTS];
+  // Helper to parse hotkey string and check if it matches an event
+  const matchesHotkey = useCallback((event: KeyboardEvent, hotkeyString: string): boolean => {
+    const parts = hotkeyString.toLowerCase().split('+');
+    const key = parts[parts.length - 1];
+    const modifiers = parts.slice(0, -1);
     
-    if (handler && shortcut.enabled) {
-      useHotkeys(
-        shortcut.keys,
-        (event) => {
-          const inputFocused = isInputFocused();
-          
-          if (!shouldAllowShortcut(shortcutId, inputFocused, activeModal)) {
-            return;
-          }
-          
-          if (shortcut.preventDefault) {
-            event.preventDefault();
-          }
-          
-          if (shortcut.stopPropagation) {
-            event.stopPropagation();
-          }
-          
-          if (debug) {
-            console.log(`🔥 Triggered shortcut: ${shortcutId} (${shortcut.keys.join(', ')})`);
-          }
-          
-          handler();
-        },
-        {
-          enabled: enabled && shortcut.enabled,
-          enableOnFormTags: shortcut.allowInInput ? ['INPUT', 'TEXTAREA'] : false,
-          enableOnContentEditable: shortcut.allowInInput,
-        },
-        [
-          handler, 
-          enabled, 
-          shortcut.enabled, 
-          shortcut.preventDefault, 
-          shortcut.stopPropagation,
-          activeModal,
-          debug
-        ]
-      );
+    // Check modifiers
+    const needsCtrl = modifiers.includes('ctrl') || modifiers.includes('mod');
+    const needsMeta = modifiers.includes('meta') || modifiers.includes('mod');
+    const needsAlt = modifiers.includes('alt');
+    const needsShift = modifiers.includes('shift');
+    
+    // On Mac, 'mod' means Meta (Cmd), on Windows/Linux it means Ctrl
+    const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+    const modKey = isMac ? event.metaKey : event.ctrlKey;
+    
+    // Check if the modifier requirements are met
+    if (modifiers.includes('mod')) {
+      if (!modKey) return false;
+    } else {
+      if (needsCtrl && !event.ctrlKey) return false;
+      if (needsMeta && !event.metaKey) return false;
     }
-  });
+    if (needsAlt && !event.altKey) return false;
+    if (needsShift && !event.shiftKey) return false;
+    
+    // Check the key itself
+    const eventKey = event.key.toLowerCase();
+    const eventCode = event.code.toLowerCase();
+    
+    // Handle special keys
+    if (key === 'escape' || key === 'esc') {
+      return eventKey === 'escape';
+    }
+    if (key === 'delete' || key === 'backspace') {
+      return eventKey === 'delete' || eventKey === 'backspace';
+    }
+    if (key === 'enter') {
+      return eventKey === 'enter';
+    }
+    if (key === 'space') {
+      return eventKey === ' ' || eventCode === 'space';
+    }
+    
+    // Handle letter/number keys
+    return eventKey === key || eventCode === `key${key.toUpperCase()}` || eventCode === `digit${key}`;
+  }, []);
+
+  // Register all shortcuts via a single event listener
+  useEffect(() => {
+    if (!enabled) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const inputFocused = isInputFocused();
+      
+      // Check each shortcut
+      for (const [shortcutId, shortcut] of Object.entries(SHORTCUTS)) {
+        if (!shortcut.enabled) continue;
+        
+        // Check if any of the shortcut's keys match
+        const matches = shortcut.keys.some(key => matchesHotkey(event, key));
+        if (!matches) continue;
+        
+        // Get handler
+        const handler = customHandlers[shortcutId as keyof typeof SHORTCUTS] || 
+                       defaultHandlers[shortcutId as keyof typeof SHORTCUTS];
+        if (!handler) continue;
+        
+        // Check if shortcut is allowed in current context
+        if (!shouldAllowShortcut(shortcutId, inputFocused, activeModal)) {
+          continue;
+        }
+        
+        // Check if shortcut allows input focus
+        if (inputFocused && !shortcut.allowInInput) {
+          continue;
+        }
+        
+        if (shortcut.preventDefault) {
+          event.preventDefault();
+        }
+        
+        if (shortcut.stopPropagation) {
+          event.stopPropagation();
+        }
+        
+        if (debug) {
+          console.log(`🔥 Triggered shortcut: ${shortcutId} (${shortcut.keys.join(', ')})`);
+        }
+        
+        handler();
+        return; // Only trigger one shortcut per keypress
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [enabled, activeModal, debug, isInputFocused, matchesHotkey, customHandlers, defaultHandlers]);
 
   // Return utility functions and state
   return {

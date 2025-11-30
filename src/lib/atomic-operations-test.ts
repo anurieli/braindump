@@ -3,7 +3,7 @@
  * This file validates the robust atomic functionality for undo/redo
  */
 
-import { useStore } from '@/store/index'
+import { useStore, canUndo, undo } from '@/store/index'
 
 interface TestResult {
   success: boolean
@@ -34,12 +34,13 @@ export const testAtomicIdeaOnly = async (): Promise<TestResult> => {
     const finalIdeasCount = Object.keys(finalState.ideas).length
     const finalEdgesCount = Object.keys(finalState.edges).length
     
-    const success = 
+    const success = Boolean(
       finalIdeasCount === initialIdeasCount + 1 &&
       finalEdgesCount === initialEdgesCount &&
       result.ideaId &&
       !result.edgeId &&
       finalState.ideas[result.ideaId]?.text === 'Test atomic idea creation'
+    )
     
     return {
       success,
@@ -92,7 +93,7 @@ export const testAtomicIdeaWithEdge = async (): Promise<TestResult> => {
     
     const createdEdge = result.edgeId ? finalState.edges[result.edgeId] : null
     
-    const success = 
+    const success = Boolean(
       finalIdeasCount === initialIdeasCount + 1 &&
       finalEdgesCount === initialEdgesCount + 1 &&
       result.ideaId &&
@@ -102,6 +103,7 @@ export const testAtomicIdeaWithEdge = async (): Promise<TestResult> => {
       createdEdge?.child_id === result.ideaId &&
       createdEdge?.type === 'relates-to' &&
       createdEdge?.note === 'Test edge note'
+    )
     
     return {
       success,
@@ -157,7 +159,7 @@ export const testCircularDependencyPrevention = async (): Promise<TestResult> =>
           ideaA, 
           ideaB: resultB.ideaId, 
           ideaC: resultC.ideaId, 
-          cycleError: cycleError.toString() 
+          cycleError: String(cycleError) 
         }
       }
     }
@@ -202,9 +204,10 @@ export const testInvalidParentId = async (): Promise<TestResult> => {
       const finalIdeasCount = Object.keys(finalState.ideas).length
       const finalEdgesCount = Object.keys(finalState.edges).length
       
-      const success = 
+      const success = Boolean(
         finalIdeasCount === initialIdeasCount &&
         finalEdgesCount === initialEdgesCount
+      )
       
       return {
         success,
@@ -212,7 +215,7 @@ export const testInvalidParentId = async (): Promise<TestResult> => {
           ? 'Invalid parent ID correctly prevented and no orphaned data created'
           : 'Invalid parent ID prevented but may have left orphaned data',
         details: {
-          validationError: validationError.toString(),
+          validationError: String(validationError),
           ideasDelta: finalIdeasCount - initialIdeasCount,
           edgesDelta: finalEdgesCount - initialEdgesCount
         }
@@ -292,11 +295,11 @@ export const quickTest = async () => {
     
     // Test 3: Undo
     console.log('\n3️⃣ Testing undo functionality...')
-    const canUndoBefore = store.canUndo()
+    const canUndoBefore = canUndo()
     console.log('Can undo before:', canUndoBefore)
     
     if (canUndoBefore) {
-      await store.undo()
+      await undo()
       console.log('✅ Undo executed')
       
       const state = useStore.getState()
